@@ -38,6 +38,7 @@ public:
 			mysql_free_result(res_);
 	}
 
+
 	inline int numFields(void) noexcept
 	{
 		return mysql_num_fields(res_);
@@ -118,6 +119,12 @@ public:
 	{
 		if (conn_)
 			mysql_close(conn_);
+	}
+
+
+	inline int ping(void)
+	{
+		return mysql_ping(conn_);
 	}
 
 
