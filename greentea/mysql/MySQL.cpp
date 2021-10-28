@@ -42,8 +42,11 @@ MySQL::MySQL(const char *host, const char *user, const char *passwd,
 {
 
 	err_buf_ = new char[err_buf_size];
-	if (!err_buf_)
-		return; /* We can't call err! */
+	if (!err_buf_) {
+		/* We can't call err! */
+		throw std::runtime_error("ENOMEM");
+		return;
+	}
 
 	conn_ = mysql_init(NULL);
 	if (!conn_)
