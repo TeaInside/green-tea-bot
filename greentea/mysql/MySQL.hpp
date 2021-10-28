@@ -26,13 +26,13 @@ private:
 	MYSQL_RES *res_ = nullptr;
 
 public:
-	inline MySQLRes(MYSQL_RES *res):
+	inline MySQLRes(MYSQL_RES *res) noexcept:
 		res_(res)
 	{
 	}
 
 
-	inline ~MySQLRes(void)
+	inline ~MySQLRes(void) noexcept
 	{
 		if (res_)
 			mysql_free_result(res_);
