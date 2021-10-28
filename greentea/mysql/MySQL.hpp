@@ -21,12 +21,10 @@ class MySQLRes
 {
 private:
 	MYSQL_RES *res_ = nullptr;
-	MySQL *mysql_ = nullptr;
 
 public:
-	inline MySQLRes(MySQL *mysql, MYSQL_RES *res):
-		res_(res),
-		mysql_(mysql)
+	inline MySQLRes(MYSQL_RES *res):
+		res_(res)
 	{
 	}
 

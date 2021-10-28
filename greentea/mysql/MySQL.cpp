@@ -86,7 +86,7 @@ MySQLRes *MySQL::storeResultRaw(void)
 		return err(nullptr, "Error on mysql_store_result()",
 			   mysql_error(conn_));
 
-	return new MySQLRes(this, res);
+	return new MySQLRes(res);
 }
 
 
@@ -99,7 +99,7 @@ std::unique_ptr<MySQLRes> MySQL::storeResult(void)
 		return err(nullptr, "Error on mysql_store_result()",
 			   mysql_error(conn_));
 
-	return std::make_unique<MySQLRes>(this, res);
+	return std::make_unique<MySQLRes>(res);
 }
 
 
