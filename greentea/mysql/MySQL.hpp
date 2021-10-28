@@ -63,20 +63,19 @@ private:
 	char *err_buf_ = nullptr;
 	bool throw_err_ = true;
 
-	template<typename T>
-	T err(T ret, const char *err, const char *sql_err);
+	static constexpr size_t err_buf_size = 8192;
 
-	template<typename T>
-	T err(T ret, const char *err);
-
-	static constexpr size_t err_buf_size = 4096;
-
+	inline void err(const char *msg)
+	{
+		err(msg, nullptr);
+	}
 public:
 	MySQL(const char *host, const char *user, const char *passwd,
 	      const char *dbname);
 	bool connect(void);
 	MySQLRes *storeResultRaw(void);
 	std::unique_ptr<MySQLRes> storeResult(void);
+	void err(const char *msg, const char *sql_msg);
 
 
 	inline void setThrowErr(bool b)

@@ -5,31 +5,19 @@
 
 #include "MySQL.hpp"
 
-#define ERR_BUF 512
-
 namespace mysql {
 
-template<typename T>
-T MySQL::err(T ret, const char *msg, const char *sql_msg)
+
+void MySQL::err(const char *msg, const char *sql_msg)
 {
 	size_t l;
 
 	l = (size_t)snprintf(err_buf_, err_buf_size, "%s", msg);
-
 	if (sql_msg)
 		snprintf(err_buf_ + l, err_buf_size - l, ": %s", sql_msg);
 
 	if (throw_err_)
 		throw std::runtime_error(std::string(err_buf_));
-
-	return ret;
-}
-
-
-template<typename T>
-T MySQL::err(T ret, const char *msg)
-{
-	return err(ret, msg, nullptr);
 }
 
 
@@ -50,7 +38,7 @@ MySQL::MySQL(const char *host, const char *user, const char *passwd,
 
 	conn_ = mysql_init(NULL);
 	if (unlikely(!conn_))
-		err(0, "Cannot init mysql on mysql_init()");
+		err("Cannot init mysql on mysql_init()");
 }
 
 
@@ -60,9 +48,11 @@ bool MySQL::connect(void)
 
 	ret = mysql_real_connect(conn_, host_, user_, passwd_, dbname_,
 				 (unsigned int)port_, NULL, 0);
-	if (unlikely(!ret))
-		return err(false, "Cannot connect on mysql_real_connect()",
-			   mysql_error(conn_));
+	if (unlikely(!ret)) {
+		err("Cannot connect on mysql_real_connect()",
+		    mysql_error(conn_));
+		return false;
+	}
 
 	/*
 	 * For a successful connection, the return value is the
@@ -70,7 +60,8 @@ bool MySQL::connect(void)
 	 */
 	if (unlikely(ret != conn_)) {
 		mysql_close(ret);
-		return err(false, "Bug on MySQL::connect()");
+		err("Bug on MySQL::connect()");
+		return false;
 	}
 
 	return true;
@@ -82,9 +73,10 @@ MySQLRes *MySQL::storeResultRaw(void)
 	MYSQL_RES *res;
 
 	res = mysql_store_result(conn_);
-	if (unlikely(!res))
-		return err(nullptr, "Error on mysql_store_result()",
-			   mysql_error(conn_));
+	if (unlikely(!res)) {
+		err("Error on mysql_store_result()", mysql_error(conn_));
+		return nullptr;
+	}
 
 	return new MySQLRes(res);
 }
@@ -95,9 +87,10 @@ std::unique_ptr<MySQLRes> MySQL::storeResult(void)
 	MYSQL_RES *res;
 
 	res = mysql_store_result(conn_);
-	if (unlikely(!res))
-		return err(nullptr, "Error on mysql_store_result()",
-			   mysql_error(conn_));
+	if (unlikely(!res)) {
+		err("Error on mysql_store_result()", mysql_error(conn_));
+		return nullptr;
+	}
 
 	return std::make_unique<MySQLRes>(res);
 }
