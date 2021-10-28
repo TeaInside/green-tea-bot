@@ -59,14 +59,16 @@ private:
 	const char *passwd_ = nullptr;
 	const char *dbname_ = nullptr;
 	uint16_t port_ = 0;
+	char *err_buf_ = nullptr;
 	bool throw_err_ = true;
-	char err_buf_[512];
 
 	template<typename T>
 	T err(T ret, const char *err, const char *sql_err);
 
 	template<typename T>
 	T err(T ret, const char *err);
+
+	static constexpr size_t err_buf_size = 4096;
 
 public:
 	MySQL(const char *host, const char *user, const char *passwd,
@@ -122,6 +124,8 @@ public:
 	inline ~MySQL(void) noexcept
 	{
 		this->close();
+		if (err_buf_)
+			delete[] err_buf_;
 	}
 };
 

@@ -14,10 +14,10 @@ T MySQL::err(T ret, const char *msg, const char *sql_msg)
 {
 	size_t l;
 
-	l = (size_t)snprintf(err_buf_, sizeof(err_buf_), "%s", msg);
+	l = (size_t)snprintf(err_buf_, err_buf_size, "%s", msg);
 
 	if (sql_msg)
-		snprintf(err_buf_ + l, sizeof(err_buf_) - l, ": %s", sql_msg);
+		snprintf(err_buf_ + l, err_buf_size - l, ": %s", sql_msg);
 
 	if (throw_err_)
 		throw std::runtime_error(std::string(err_buf_));
@@ -40,9 +40,14 @@ MySQL::MySQL(const char *host, const char *user, const char *passwd,
 	passwd_(passwd),
 	dbname_(dbname)
 {
+
+	err_buf_ = new char[err_buf_size];
+	if (!err_buf_)
+		return; /* We can't call err! */
+
 	conn_ = mysql_init(NULL);
 	if (!conn_)
-		throw std::runtime_error("Cannot init mysql on mysql_init()");
+		err(0, "Cannot init mysql on mysql_init()");
 }
 
 

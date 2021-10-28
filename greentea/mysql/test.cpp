@@ -20,7 +20,7 @@ static void do_test(void)
 		db = new mysql::MySQL(host, user, passwd, dbname);
 		db->setPort(port);
 		db->connect();
-		db->query("SELECT 1, 2 UNION SELECT 2 UNION SELECT 3;");
+		db->query("SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT NOW();");
 		res = db->storeResultRaw();
 	} catch (const std::runtime_error& e) {
 		std::cout << e.what() << std::endl;
