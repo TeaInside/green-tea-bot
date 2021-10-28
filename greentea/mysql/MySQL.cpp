@@ -57,10 +57,9 @@ bool MySQL::connect(void)
 
 	ret = mysql_real_connect(conn_, host_, user_, passwd_, dbname_,
 				 (unsigned int)port_, NULL, 0);
-	if (!ret) {
+	if (!ret)
 		return err(false, "Cannot connect on mysql_real_connect()",
 			   mysql_error(conn_));
-	}
 
 	/*
 	 * For a successful connection, the return value is the
@@ -80,10 +79,9 @@ MySQLRes *MySQL::storeResultRaw(void)
 	MYSQL_RES *res;
 
 	res = mysql_store_result(conn_);
-	if (!res) {
+	if (!res)
 		return err(nullptr, "Error on mysql_store_result()",
 			   mysql_error(conn_));
-	}
 
 	return new MySQLRes(this, res);
 }
@@ -94,10 +92,9 @@ std::unique_ptr<MySQLRes> MySQL::storeResult(void)
 	MYSQL_RES *res;
 
 	res = mysql_store_result(conn_);
-	if (!res) {
+	if (!res)
 		return err(nullptr, "Error on mysql_store_result()",
 			   mysql_error(conn_));
-	}
 
 	return std::make_unique<MySQLRes>(this, res);
 }
