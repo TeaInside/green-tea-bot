@@ -42,14 +42,14 @@ MySQL::MySQL(const char *host, const char *user, const char *passwd,
 {
 
 	err_buf_ = new char[err_buf_size];
-	if (!err_buf_) {
+	if (unlikely(!err_buf_)) {
 		/* We can't call err! */
 		throw std::runtime_error("ENOMEM");
 		return;
 	}
 
 	conn_ = mysql_init(NULL);
-	if (!conn_)
+	if (unlikely(!conn_))
 		err(0, "Cannot init mysql on mysql_init()");
 }
 
@@ -60,7 +60,7 @@ bool MySQL::connect(void)
 
 	ret = mysql_real_connect(conn_, host_, user_, passwd_, dbname_,
 				 (unsigned int)port_, NULL, 0);
-	if (!ret)
+	if (unlikely(!ret))
 		return err(false, "Cannot connect on mysql_real_connect()",
 			   mysql_error(conn_));
 
@@ -68,7 +68,7 @@ bool MySQL::connect(void)
 	 * For a successful connection, the return value is the
 	 * same as the value of the first parameter.
 	 */
-	if (ret != conn_) {
+	if (unlikely(ret != conn_)) {
 		mysql_close(ret);
 		return err(false, "Bug on MySQL::connect()");
 	}
@@ -82,7 +82,7 @@ MySQLRes *MySQL::storeResultRaw(void)
 	MYSQL_RES *res;
 
 	res = mysql_store_result(conn_);
-	if (!res)
+	if (unlikely(!res))
 		return err(nullptr, "Error on mysql_store_result()",
 			   mysql_error(conn_));
 
@@ -95,7 +95,7 @@ std::unique_ptr<MySQLRes> MySQL::storeResult(void)
 	MYSQL_RES *res;
 
 	res = mysql_store_result(conn_);
-	if (!res)
+	if (unlikely(!res))
 		return err(nullptr, "Error on mysql_store_result()",
 			   mysql_error(conn_));
 

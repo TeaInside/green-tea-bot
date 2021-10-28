@@ -13,6 +13,9 @@
 
 #include <mysql/mysql.h>
 
+#define likely(EXPR)	__builtin_expect((bool)(EXPR), 1)
+#define unlikely(EXPR)	__builtin_expect((bool)(EXPR), 0)
+
 namespace mysql {
 
 class MySQL;
