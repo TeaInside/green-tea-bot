@@ -3,40 +3,99 @@
  * Copyright (C) 2021  Ammar Faizi <ammarfaizi2@gmail.com>
  */
 
-#include <cstdio>
-#include <stdexcept>
-
 #include "MySQL.hpp"
 
 #define ERR_BUF 512
 
 namespace mysql {
 
+template<typename T>
+T MySQL::err(T ret, const char *msg, const char *sql_msg)
+{
+	size_t l;
 
-MySQL::MySQL(const char *host, const char *user, const char *passwd):
+	l = (size_t)snprintf(err_buf_, sizeof(err_buf_), "%s", msg);
+
+	if (sql_msg)
+		snprintf(err_buf_ + l, sizeof(err_buf_) - l, ": %s", sql_msg);
+
+	if (throw_err_)
+		throw std::runtime_error(std::string(err_buf_));
+
+	return ret;
+}
+
+
+template<typename T>
+T MySQL::err(T ret, const char *msg)
+{
+	return err(ret, msg, nullptr);
+}
+
+
+MySQL::MySQL(const char *host, const char *user, const char *passwd,
+	     const char *dbname):
 	host_(host),
 	user_(user),
-	passwd_(passwd)
+	passwd_(passwd),
+	dbname_(dbname)
 {
-	mysql_ = mysql_init(NULL);
-	if (!mysql_)
-		throw std::runtime_error("Cannot init mysql on mysql_init()\n");
+	conn_ = mysql_init(NULL);
+	if (!conn_)
+		throw std::runtime_error("Cannot init mysql on mysql_init()");
 }
 
 
-void MySQL::connect(void)
+bool MySQL::connect(void)
 {
-	int ret;
+	MYSQL *ret;
 
-	ret = mysql_real_connect(mysql_, host_, user_, passwd_, dbname_,
-				 0, NULL, 0);
+	ret = mysql_real_connect(conn_, host_, user_, passwd_, dbname_,
+				 (unsigned int)port_, NULL, 0);
 	if (!ret) {
-		char buf[ERR_BUF];
-		snprintf(buf, sizeof(buf),
-			 "Cannot connect on mysql_real_connect(): %s\n",
-			 mysql_error(mysql_));
-		throw std::runtime_error(std::string(buf));
+		return err(false, "Cannot connect on mysql_real_connect()",
+			   mysql_error(conn_));
 	}
+
+	/*
+	 * For a successful connection, the return value is the
+	 * same as the value of the first parameter.
+	 */
+	if (ret != conn_) {
+		mysql_close(ret);
+		return err(false, "Bug on MySQL::connect()");
+	}
+
+	return true;
 }
+
+
+MySQLRes *MySQL::storeResultRaw(void)
+{
+	MYSQL_RES *res;
+
+	res = mysql_store_result(conn_);
+	if (!res) {
+		return err(nullptr, "Error on mysql_store_result()",
+			   mysql_error(conn_));
+	}
+
+	return new MySQLRes(this, res);
+}
+
+
+std::unique_ptr<MySQLRes> MySQL::storeResult(void)
+{
+	MYSQL_RES *res;
+
+	res = mysql_store_result(conn_);
+	if (!res) {
+		return err(nullptr, "Error on mysql_store_result()",
+			   mysql_error(conn_));
+	}
+
+	return std::make_unique<MySQLRes>(this, res);
+}
+
 
 } /* namespace mysql */
