@@ -91,10 +91,11 @@ public:
 
 	inline int execute(void) noexcept
 	{
-		if (!isBound) {
-			isBound = true;
-			mergeBind();
-		}
+		int ret;
+
+		ret = mergeBind();
+		if (unlikely(ret))
+			return ret;
 
 		return mysql_stmt_execute(stmt_);
 	}
