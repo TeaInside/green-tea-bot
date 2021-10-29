@@ -17,7 +17,8 @@ $(CXX_TESTS:=.test): $(CXX_TESTS:=.o) ../MySQL.o
 	$(CXX) $(CXXFLAGS) $(^) -o $(@) $(LIB_LDFLAGS)
 
 $(CXX_TESTS:=__do_test): $(CXX_TESTS:=.test)
-	./$(@:%__do_test=%.test)
+	@echo "Running $(@:%__do_test=%.test)...";
+	@./$(@:%__do_test=%.test);
 
 clean:
 	@rm -vf $(CXX_TESTS:=.test) $(CXX_TESTS:=.o)
