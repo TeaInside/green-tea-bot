@@ -5,10 +5,12 @@
 
 #include "MySQL.hpp"
 
+#include <cstring>
+
 namespace mysql {
 
 
-void MySQL::err(const char *msg, const char *sql_msg)
+__cold void MySQL::err(const char *msg, const char *sql_msg)
 {
 	size_t l;
 
@@ -28,17 +30,15 @@ MySQL::MySQL(const char *host, const char *user, const char *passwd,
 	passwd_(passwd),
 	dbname_(dbname)
 {
-
-	err_buf_ = new char[err_buf_size];
+	err_buf_ = (char *)calloc(err_buf_size, sizeof(char));
 	if (unlikely(!err_buf_)) {
-		/* We can't call err! */
-		throw std::runtime_error("ENOMEM");
+		throw std::bad_alloc();
 		return;
 	}
 
 	conn_ = mysql_init(NULL);
 	if (unlikely(!conn_))
-		err("Cannot init mysql on mysql_init()");
+		throw std::runtime_error("Cannot init mysql on mysql_init()");
 }
 
 
@@ -93,6 +93,91 @@ std::unique_ptr<MySQLRes> MySQL::storeResult(void)
 	}
 
 	return std::make_unique<MySQLRes>(res);
+}
+
+
+__hot __attribute__((noinline))
+MYSQL_STMT *MySQL::createStmt(size_t bindValNum, const char *q, size_t qlen,
+			      MYSQL_BIND **bind_p)
+{
+	int err_ret;
+	MYSQL_STMT *stmt = nullptr;
+	MYSQL_BIND *bind = nullptr;
+	const char *err_msg, *err_sql;
+
+	stmt = mysql_stmt_init(conn_);
+	if (unlikely(!stmt)) {
+		err_msg = "Error on mysql_stmt_init()";
+		err_sql = "ENOMEM"; 
+		goto err;
+	}
+
+	err_ret = mysql_stmt_prepare(stmt, q, qlen);
+	if (unlikely(err_ret)) { 
+		err_msg = "Error on mysql_stmt_prepare()";
+		err_sql = mysql_stmt_error(stmt); 
+		goto err;
+	}
+
+	bind = (MYSQL_BIND *)calloc(bindValNum, sizeof(*bind));
+	if (unlikely(!bind)) {
+		err_msg = "calloc() ENOMEM";
+		err_sql = NULL;
+		goto err;
+	}
+
+	*bind_p = bind;
+	return stmt;
+
+err:
+	if (stmt)
+		mysql_stmt_close(stmt);
+
+	if (bind)
+		free(bind);
+
+	err(err_msg, err_sql);
+	return nullptr;
+}
+
+
+__hot __attribute__((noinline))
+MySQLStmt *MySQL::prepareLenRaw(size_t bindValNum, const char *q, size_t qlen)
+{
+	MySQLStmt *ret;
+	MYSQL_STMT *stmt;
+	MYSQL_BIND *bind;
+
+	stmt = createStmt(bindValNum, q, qlen, &bind);
+	if (unlikely(!stmt))
+		return nullptr;
+
+	try {
+		ret = new MySQLStmt(bindValNum, stmt, bind, this);
+	} catch (const std::bad_alloc &e) {
+		mysql_stmt_close(stmt);
+		free(bind);
+		err("new ENOMEM on prepareLenRaw()");
+		return nullptr;
+	}
+
+	return ret;
+}
+
+
+__hot MySQLStmt *MySQL::prepareRaw(size_t bindValNum, const char *q)
+{
+	return prepareLenRaw(bindValNum, q, strlen(q));
+}
+
+
+MySQLStmt::MySQLStmt(size_t bindValNum, MYSQL_STMT *stmt, MYSQL_BIND *bind,
+		     MySQL *mysql):
+	stmt_(stmt),
+	bind_(bind),
+	mysql_(mysql),
+	bindValNum_(bindValNum)
+{
 }
 
 

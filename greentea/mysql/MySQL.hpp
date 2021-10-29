@@ -9,12 +9,15 @@
 #include <memory>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <stdexcept>
 
 #include <mysql/mysql.h>
 
 #define likely(EXPR)	__builtin_expect((bool)(EXPR), 1)
 #define unlikely(EXPR)	__builtin_expect((bool)(EXPR), 0)
+#define __hot		__attribute__((__hot__))
+#define __cold		__attribute__((__cold__))
 
 namespace mysql {
 
@@ -52,6 +55,19 @@ public:
 };
 
 
+class MySQLStmt
+{
+private:
+	MYSQL_STMT *stmt_;
+	MYSQL_BIND *bind_;
+	MySQL *mysql_;
+	size_t bindValNum_;
+public:
+	MySQLStmt(size_t bindValNum, MYSQL_STMT *stmt, MYSQL_BIND *bind,
+		  MySQL *mysql);
+};
+
+
 class MySQL
 {
 private:
@@ -65,11 +81,9 @@ private:
 	bool throw_err_ = true;
 
 	static constexpr size_t err_buf_size = 8192;
+	MYSQL_STMT *createStmt(size_t bindValNum, const char *q, size_t qlen,
+			       MYSQL_BIND **bind_p);
 
-	inline void err(const char *msg)
-	{
-		err(msg, nullptr);
-	}
 public:
 	MySQL(const char *host, const char *user, const char *passwd,
 	      const char *dbname);
@@ -77,9 +91,18 @@ public:
 	MySQLRes *storeResultRaw(void);
 	std::unique_ptr<MySQLRes> storeResult(void);
 	void err(const char *msg, const char *sql_msg);
+	MySQLStmt *prepareRaw(size_t bindValNum, const char *q);
+	MySQLStmt *prepareLenRaw(size_t bindValNum, const char *q, size_t qlen);
+	std::unique_ptr<MySQLStmt> prepare(size_t bindValNum, const char *q);
+	std::unique_ptr<MySQLStmt> prepareLen(size_t bindValNum, const char *q);
+
+	inline void err(const char *msg)
+	{
+		err(msg, nullptr);
+	}
 
 
-	inline void setThrowErr(bool b)
+	inline void setThrowErr(bool b) noexcept
 	{
 		throw_err_ = b;
 	}
@@ -117,12 +140,12 @@ public:
 
 	inline void close(void) noexcept
 	{
-		if (conn_)
+		if (likely(conn_))
 			mysql_close(conn_);
 	}
 
 
-	inline int ping(void)
+	inline int ping(void) noexcept
 	{
 		return mysql_ping(conn_);
 	}
@@ -131,8 +154,8 @@ public:
 	inline ~MySQL(void) noexcept
 	{
 		this->close();
-		if (err_buf_)
-			delete[] err_buf_;
+		if (likely(err_buf_))
+			free(err_buf_);
 	}
 };
 
