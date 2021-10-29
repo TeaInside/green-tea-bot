@@ -62,9 +62,42 @@ private:
 	MYSQL_BIND *bind_;
 	MySQL *mysql_;
 	size_t bindValNum_;
+	bool isBound = false;
 public:
 	MySQLStmt(size_t bindValNum, MYSQL_STMT *stmt, MYSQL_BIND *bind,
 		  MySQL *mysql);
+
+	~MySQLStmt(void);
+
+	inline MYSQL_BIND *bind(size_t i, enum enum_field_types type, void *buf,
+				size_t buflen, bool *is_null, size_t *len) noexcept
+	{
+		MYSQL_BIND *b = &bind_[i];
+
+		b->buffer_type   = type;
+		b->buffer        = buf;
+		b->buffer_length = buflen;
+		b->is_null       = is_null;
+		b->length        = len;
+		return b;
+	}
+
+
+	inline int mergeBind(void) noexcept
+	{
+		return mysql_stmt_bind_param(stmt_, bind_);
+	}
+
+
+	inline int execute(void) noexcept
+	{
+		if (!isBound) {
+			isBound = true;
+			mergeBind();
+		}
+
+		return mysql_stmt_execute(stmt_);
+	}
 };
 
 
@@ -99,6 +132,12 @@ public:
 	inline void err(const char *msg)
 	{
 		err(msg, nullptr);
+	}
+
+
+	inline bool getThrowErr(void) noexcept
+	{
+		return throw_err_;
 	}
 
 

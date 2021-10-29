@@ -5,7 +5,7 @@ LIB_LDFLAGS := -lasan -lmysqlclient
 
 CXX_TESTS := \
 	prepared_statement \
-	query_fetch
+# 	query_fetch
 
 all: $(CXX_TESTS:=.test)
 

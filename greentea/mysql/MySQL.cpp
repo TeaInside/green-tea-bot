@@ -74,7 +74,9 @@ MySQLRes *MySQL::storeResultRaw(void)
 
 	res = mysql_store_result(conn_);
 	if (unlikely(!res)) {
-		err("Error on mysql_store_result()", mysql_error(conn_));
+		const char *sql_err = mysql_error(conn_);
+		if (sql_err && sql_err[0] != '\0')
+			err("Error on mysql_store_result()", sql_err);
 		return nullptr;
 	}
 
@@ -88,7 +90,9 @@ std::unique_ptr<MySQLRes> MySQL::storeResult(void)
 
 	res = mysql_store_result(conn_);
 	if (unlikely(!res)) {
-		err("Error on mysql_store_result()", mysql_error(conn_));
+		const char *sql_err = mysql_error(conn_);
+		if (sql_err && sql_err[0] != '\0')
+			err("Error on mysql_store_result()", sql_err);
 		return nullptr;
 	}
 
@@ -113,9 +117,9 @@ MYSQL_STMT *MySQL::createStmt(size_t bindValNum, const char *q, size_t qlen,
 	}
 
 	err_ret = mysql_stmt_prepare(stmt, q, qlen);
-	if (unlikely(err_ret)) { 
+	if (unlikely(err_ret)) {
 		err_msg = "Error on mysql_stmt_prepare()";
-		err_sql = mysql_stmt_error(stmt); 
+		err_sql = mysql_stmt_error(stmt);
 		goto err;
 	}
 
@@ -130,13 +134,27 @@ MYSQL_STMT *MySQL::createStmt(size_t bindValNum, const char *q, size_t qlen,
 	return stmt;
 
 err:
-	if (stmt)
-		mysql_stmt_close(stmt);
-
 	if (bind)
 		free(bind);
 
-	err(err_msg, err_sql);
+	/*
+	 * Don't close the @stmt before `err()`!
+	 *
+	 * Note that err_sql maybe a heap allocated string
+	 * that's handled by stmt. If we call `mysql_stmt_close()`
+	 * before `err()`, it can lead to use after free!
+	 *
+	 */
+	try {
+		err(err_msg, err_sql);
+		if (stmt)
+			mysql_stmt_close(stmt);
+	} catch (...) {
+		if (stmt)
+			mysql_stmt_close(stmt);
+		throw;
+	}
+
 	return nullptr;
 }
 
@@ -178,6 +196,16 @@ MySQLStmt::MySQLStmt(size_t bindValNum, MYSQL_STMT *stmt, MYSQL_BIND *bind,
 	mysql_(mysql),
 	bindValNum_(bindValNum)
 {
+}
+
+
+MySQLStmt::~MySQLStmt(void)
+{
+	if (bind_)
+		free(bind_);
+
+	if (stmt_)
+		mysql_stmt_close(stmt_);
 }
 
 
