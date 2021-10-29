@@ -53,10 +53,8 @@ __hot MySQLRes *MySQL::storeResult(void) noexcept
 	MYSQL_RES *result;
 
 	result = mysql_store_result(conn_);
-	if (unlikely(!result)) {
-		printf("err: %s\n", mysql_error(conn_));
+	if (unlikely(!result))
 		return nullptr;
-	}
 
 	try {
 		ret = new MySQLRes(result);
