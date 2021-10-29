@@ -6,22 +6,62 @@
 #ifndef mysql__MySQL__HPP
 #define mysql__MySQL__HPP
 
-#include <memory>
+#include <errno.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <stdexcept>
-
 #include <mysql/mysql.h>
 
+#ifndef likely
 #define likely(EXPR)	__builtin_expect((bool)(EXPR), 1)
+#endif
+
+#ifndef unlikely
 #define unlikely(EXPR)	__builtin_expect((bool)(EXPR), 0)
+#endif
+
+#ifndef __hot
 #define __hot		__attribute__((__hot__))
+#endif
+
+#ifndef __cold
 #define __cold		__attribute__((__cold__))
+#endif
+
+
+template<typename T>
+static inline intptr_t MYSQL_PTR_ERR(const T *ptr)
+{
+	return (intptr_t) ptr;
+}
+
+
+template<typename T>
+static inline T *MYSQL_ERR_PTR(intptr_t err)
+{
+	return (T *) err;
+}
+
+
+template<typename T>
+static inline bool MYSQL_IS_ERR(const T *ptr)
+{
+	return unlikely((uintptr_t) ptr >= (uintptr_t) -4095UL);
+}
+
+
+template<typename T>
+static inline bool MYSQL_IS_ERR_OR_NULL(const T *ptr)
+{
+	return MYSQL_IS_ERR(ptr) || unlikely(!ptr);
+}
+
 
 namespace mysql {
 
+
 class MySQL;
+
 
 class MySQLRes
 {
@@ -52,6 +92,12 @@ public:
 	{
 		return mysql_fetch_row(res_);
 	}
+
+
+	inline MYSQL_RES *getRes(void) noexcept
+	{
+		return res_;
+	}
 };
 
 
@@ -60,14 +106,16 @@ class MySQLStmt
 private:
 	MYSQL_STMT *stmt_;
 	MYSQL_BIND *bind_;
-	MySQL *mysql_;
-	size_t bindValNum_;
-	bool isBound = false;
-public:
-	MySQLStmt(size_t bindValNum, MYSQL_STMT *stmt, MYSQL_BIND *bind,
-		  MySQL *mysql);
+	size_t bind_num_;
 
-	~MySQLStmt(void);
+public:
+	inline MySQLStmt(MYSQL_STMT *stmt, MYSQL_BIND *bind, size_t bind_num) noexcept:
+		stmt_(stmt),
+		bind_(bind),
+		bind_num_(bind_num)
+	{
+	}
+
 
 	inline MYSQL_BIND *bind(size_t i, enum enum_field_types type, void *buf,
 				size_t buflen, bool *is_null, size_t *len) noexcept
@@ -83,7 +131,7 @@ public:
 	}
 
 
-	inline int mergeBind(void) noexcept
+	inline int bindStmt(void) noexcept
 	{
 		return mysql_stmt_bind_param(stmt_, bind_);
 	}
@@ -91,12 +139,6 @@ public:
 
 	inline int execute(void) noexcept
 	{
-		int ret;
-
-		ret = mergeBind();
-		if (unlikely(ret))
-			return ret;
-
 		return mysql_stmt_execute(stmt_);
 	}
 };
@@ -111,46 +153,49 @@ private:
 	const char *passwd_ = nullptr;
 	const char *dbname_ = nullptr;
 	uint16_t port_ = 0;
-	char *err_buf_ = nullptr;
-	bool throw_err_ = true;
-
-	static constexpr size_t err_buf_size = 8192;
-	MYSQL_STMT *createStmt(size_t bindValNum, const char *q, size_t qlen,
-			       MYSQL_BIND **bind_p);
 
 public:
+
 	MySQL(const char *host, const char *user, const char *passwd,
 	      const char *dbname);
-	bool connect(void);
-	MySQLRes *storeResultRaw(void);
-	std::unique_ptr<MySQLRes> storeResult(void);
-	void err(const char *msg, const char *sql_msg);
-	MySQLStmt *prepareRaw(size_t bindValNum, const char *q);
-	MySQLStmt *prepareLenRaw(size_t bindValNum, const char *q, size_t qlen);
-	std::unique_ptr<MySQLStmt> prepare(size_t bindValNum, const char *q);
-	std::unique_ptr<MySQLStmt> prepareLen(size_t bindValNum, const char *q);
 
-	inline void err(const char *msg)
+	bool connect(void) noexcept;
+	MySQLRes *storeResult(void) noexcept;
+
+	MySQLStmt *prepare(size_t bind_num, const char *q) noexcept;
+	MySQLStmt *prepareLen(size_t bind_num, const char *q, size_t qlen) noexcept;
+
+
+	__hot inline int query(const char *q) noexcept
 	{
-		err(msg, nullptr);
+		return mysql_query(conn_, q);
 	}
 
 
-	inline bool getThrowErr(void) noexcept
+	__hot inline int realQuery(const char *q, unsigned long len) noexcept
 	{
-		return throw_err_;
+		return mysql_real_query(conn_, q, len);
 	}
 
 
-	inline void setThrowErr(bool b) noexcept
+	inline void close(void) noexcept
 	{
-		throw_err_ = b;
+		if (likely(conn_)) {
+			mysql_close(conn_);
+			conn_ = nullptr;
+		}
 	}
 
 
-	inline MYSQL *getConn(void) noexcept
+	__cold inline int ping(void) noexcept
 	{
-		return conn_;
+		return mysql_ping(conn_);
+	}
+
+
+	inline ~MySQL(void) noexcept
+	{
+		this->close();
 	}
 
 
@@ -160,44 +205,30 @@ public:
 	}
 
 
-	inline const char *error(void) noexcept
+	inline MYSQL *getConn(void) noexcept
 	{
-		return mysql_error(conn_);
+		return conn_;
 	}
 
 
-	inline int query(const char *q) noexcept
+	__cold inline const char *getError(void) noexcept
 	{
-		return mysql_query(conn_, q);
+		const char *ret;
+
+		ret = mysql_error(conn_);
+		if (ret && ret[0] == '\0')
+			ret = nullptr;
+
+		return ret;
 	}
 
 
-	inline int realQuery(const char *q, unsigned long len) noexcept
+	__cold inline unsigned int getErrno(void) noexcept
 	{
-		return mysql_real_query(conn_, q, len);
-	}
-
-
-	inline void close(void) noexcept
-	{
-		if (likely(conn_))
-			mysql_close(conn_);
-	}
-
-
-	inline int ping(void) noexcept
-	{
-		return mysql_ping(conn_);
-	}
-
-
-	inline ~MySQL(void) noexcept
-	{
-		this->close();
-		if (likely(err_buf_))
-			free(err_buf_);
+		return mysql_errno(conn_);
 	}
 };
+
 
 } /* namespace mysql */
 

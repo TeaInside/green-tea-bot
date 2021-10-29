@@ -21,7 +21,6 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 	mysql::MySQLRes *res;
 	mysql::MySQLStmt *st;
 	char qbuf[4096];
-	bool oldThrowErr;
 
 	static const char q_create_tbl[] =
 		"CREATE TABLE `users_%d` (" 							\
@@ -38,9 +37,6 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 
 	static const char q_drop_tbl[] = "DROP TABLE `users_%d`";
 
-	oldThrowErr = db->getThrowErr();
-	db->setThrowErr(false);
-
 	rnum = rand();
 
 	snprintf(qbuf, sizeof(qbuf), q_create_tbl, rnum);
@@ -48,17 +44,18 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 	assert(ret == 0);
 
 	/* Create table should not have a result set. */
-	res = db->storeResultRaw();
+	res = db->storeResult();
 	assert(!res);
 
 	/* Insert with prepared statement. */
 	snprintf(qbuf, sizeof(qbuf), q_insert, rnum);
-	st = db->prepareRaw(3, qbuf);
+	st = db->prepare(3, qbuf);
 	assert(st);
 
 	st->bind(0, MYSQL_TYPE_STRING, (void *)"user_a", sizeof("user_a") - 1, NULL, NULL);
 	st->bind(1, MYSQL_TYPE_STRING, (void *)"user_b", sizeof("user_b") - 1, NULL, NULL);
 	st->bind(2, MYSQL_TYPE_STRING, (void *)"user_c", sizeof("user_c") - 1, NULL, NULL);
+	st->bindStmt();
 	st->execute();
 
 	delete st;
@@ -68,7 +65,6 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 	ret = db->query(qbuf);
 	assert(ret == 0);
 
-	db->setThrowErr(oldThrowErr);
 	return 0;
 }
 

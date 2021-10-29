@@ -10,6 +10,8 @@
 
 #include "MySQL.hpp"
 
+#define pr_err(FMT, ...) \
+	printf(FMT " at %s %s:%d\n", __VA_ARGS__, __FILE__, __func__, __LINE__)
 
 static int test_fetch_001(mysql::MySQL *db)
 {
@@ -17,12 +19,21 @@ static int test_fetch_001(mysql::MySQL *db)
 	MYSQL_ROW row;
 	int num_fields;
 	mysql::MySQLRes *res;
+	static const char q[] = "SELECT 1, \"A\" UNION SELECT 2, \"B\" UNION SELECT 3, \"C\"";
 
-	ret = db->query("SELECT 1, \"A\" UNION SELECT 2, \"B\" UNION SELECT 3, \"C\"");
-	assert(ret == 0);
+	ret = db->realQuery(q, sizeof(q) - 1);
+	if (ret) {
+		pr_err("Error query(): %s", db->getError());
+		ret = 1;
+		goto out;
+	}
 
-	res = db->storeResultRaw();
-	assert(res);
+	res = db->storeResult();
+	if (MYSQL_IS_ERR_OR_NULL(res)) {
+		pr_err("Error storeResult(): %s", db->getError());
+		ret = 1;
+		goto out;
+	}
 
 	num_fields = res->numFields();
 	assert(num_fields == 2);
@@ -42,7 +53,9 @@ static int test_fetch_001(mysql::MySQL *db)
 	assert(i == 3);
 	delete res;
 
-	return 0;
+
+out:
+	return ret;
 }
 
 
@@ -65,7 +78,11 @@ static int do_test(void)
 	try {
 		db = new mysql::MySQL(host, user, passwd, dbname);
 		db->setPort(port);
-		db->connect();
+		if (unlikely(!db->connect())) {
+			pr_err("Error connect(): %s", db->getError());
+			ret = 1;
+			goto out;
+		}
 
 		ret = test_fetch_001(db);
 		if (ret)

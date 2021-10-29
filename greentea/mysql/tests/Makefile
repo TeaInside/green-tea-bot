@@ -1,6 +1,6 @@
 
-CFLAGS := -Wall -Wextra -O2 -ggdb3 -fsanitize=address -I..
-CXXFLAGS := -Wall -Wextra -O2 -ggdb3 -fsanitize=address -I..
+CFLAGS := -Wall -Wextra -O2 -ggdb3 -I.. -fsanitize=address
+CXXFLAGS := -Wall -Wextra -O2 -ggdb3 -I.. -fsanitize=address
 LIB_LDFLAGS := -lasan -lmysqlclient
 
 CXX_TESTS := \
@@ -26,7 +26,8 @@ $(foreach i, $(CXX_TESTS), $(eval $(call GEN_TEST,$(i))))
 
 $(CXX_TESTS:=__do_test): $(CXX_TESTS:=.test)
 	@echo "Running $(@:%__do_test=%.test)...";
-	@./$(@:%__do_test=%.test);
+	@LD_PRELOAD=\$($(CC) -print-file-name=libasan.so) \
+	./$(@:%__do_test=%.test) && echo "Test $(@:%__do_test=%.test) passed!";
 
 clean:
 	@rm -vf $(CXX_TESTS:=.test) $(CXX_TESTS:=.o)
