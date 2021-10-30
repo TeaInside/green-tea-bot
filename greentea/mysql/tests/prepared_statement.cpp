@@ -49,7 +49,7 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 	/* Insert with prepared statement. */
 	snprintf(qbuf, sizeof(qbuf), q_insert, rnum);
 	st = db->prepare(3, qbuf);
-	assert(st);
+	assert(!MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(st));
 	assert(!st->stmtInit());
 
 	for (i = 0; i < (10 * 3); i += 3) {
@@ -71,7 +71,7 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 
 	snprintf(qbuf, sizeof(qbuf), q_select, rnum);
 	st = db->prepare(1, qbuf);
-	assert(st);
+	assert(!MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(st));
 	assert(!st->stmtInit());
 
 	for (i = 0; i < (10 * 3); i++) {

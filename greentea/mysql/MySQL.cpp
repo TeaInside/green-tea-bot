@@ -84,26 +84,26 @@ __hot MySQLStmt *MySQL::prepareLen(size_t bind_num, const char *q, size_t qlen) 
 	if (unlikely(!stmt))
 		return nullptr;
 
-
 	bind = (MYSQL_BIND *)calloc(bind_num, sizeof(*bind));
-	if (unlikely(!bind))
+	if (unlikely(!bind)) {
+		ret = MYSQL_ERR_PTR<MySQLStmt>(-ENOMEM);
 		goto err;
-
+	}
 
 	try {
 		ret = new MySQLStmt(stmt, bind, q, qlen);
 	} catch (const std::bad_alloc &e) {
+		ret = MYSQL_ERR_PTR<MySQLStmt>(-ENOMEM);
 		goto err;
 	}
 
 	return ret;
-
 err:
 	if (bind)
 		free(bind);
 
 	mysql_stmt_close(stmt);
-	return nullptr;
+	return ret;
 }
 
 
@@ -127,24 +127,20 @@ __hot MySQLStmtRes *MySQLStmt::storeResult(size_t bind_res_num) noexcept
 	MYSQL_RES *result;
 	MYSQL_BIND *bind = nullptr;
 
-
 	result = mysql_stmt_result_metadata(stmt_);
 	if (unlikely(!result))
 		return nullptr;
-
 
 	if (((size_t)mysql_num_fields(result)) != bind_res_num) {
 		ret = MYSQL_ERR_PTR<MySQLStmtRes>(-EINVAL);
 		goto err;
 	}
 
-
 	bind = (MYSQL_BIND *)calloc(bind_res_num, sizeof(*bind));
 	if (unlikely(!bind)) {
 		ret = MYSQL_ERR_PTR<MySQLStmtRes>(-ENOMEM);
 		goto err;
 	}
-
 
 	try {
 		ret = new MySQLStmtRes(result, stmt_, bind);
@@ -154,7 +150,6 @@ __hot MySQLStmtRes *MySQLStmt::storeResult(size_t bind_res_num) noexcept
 	}
 
 	return ret;
-
 err:
 	if (bind)
 		free(bind);
