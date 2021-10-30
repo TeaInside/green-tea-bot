@@ -59,7 +59,8 @@ __hot MySQLRes *MySQL::storeResult(void) noexcept
 	try {
 		ret = new MySQLRes(result);
 	} catch (const std::bad_alloc &) {
-		return MYSQL_ERR_PTR<MySQLRes>(-ENOMEM);
+		mysql_free_result(result);
+		ret = MYSQL_ERR_PTR<MySQLRes>(-ENOMEM);
 	}
 
 	return ret;
@@ -75,34 +76,23 @@ __hot MySQLStmt *MySQL::prepare(size_t bind_num, const char *q) noexcept
 __attribute__((noinline))
 __hot MySQLStmt *MySQL::prepareLen(size_t bind_num, const char *q, size_t qlen) noexcept
 {
-	int tmp;
 	MySQLStmt *ret;
 	MYSQL_STMT *stmt = nullptr;
 	MYSQL_BIND *bind = nullptr;
 
 	stmt = mysql_stmt_init(conn_);
 	if (unlikely(!stmt))
-		return MYSQL_ERR_PTR<MySQLStmt>(-ENOMEM);
-
-
-	tmp = mysql_stmt_prepare(stmt, q, qlen);
-	if (unlikely(tmp)) {
-		ret = nullptr;
-		goto err;
-	}
+		return nullptr;
 
 
 	bind = (MYSQL_BIND *)calloc(bind_num, sizeof(*bind));
-	if (unlikely(!bind)) {
-		ret = MYSQL_ERR_PTR<MySQLStmt>(-ENOMEM);
+	if (unlikely(!bind))
 		goto err;
-	}
 
 
 	try {
-		ret = new MySQLStmt(stmt, bind, bind_num);
+		ret = new MySQLStmt(stmt, bind, q, qlen);
 	} catch (const std::bad_alloc &e) {
-		ret = MYSQL_ERR_PTR<MySQLStmt>(-ENOMEM);
 		goto err;
 	}
 
@@ -113,7 +103,78 @@ err:
 		free(bind);
 
 	mysql_stmt_close(stmt);
+	return nullptr;
+}
+
+
+MySQLStmt::~MySQLStmt(void) noexcept
+{
+	if (bind_) {
+		free(bind_);
+		bind_ = nullptr;
+	}
+
+	if (stmt_) {
+		mysql_stmt_close(stmt_);
+		stmt_ = nullptr;
+	}
+}
+
+
+__hot MySQLStmtRes *MySQLStmt::storeResult(size_t bind_res_num) noexcept
+{
+	MySQLStmtRes *ret;
+	MYSQL_RES *result;
+	MYSQL_BIND *bind = nullptr;
+
+
+	result = mysql_stmt_result_metadata(stmt_);
+	if (unlikely(!result))
+		return nullptr;
+
+
+	if (((size_t)mysql_num_fields(result)) != bind_res_num) {
+		ret = MYSQL_ERR_PTR<MySQLStmtRes>(-EINVAL);
+		goto err;
+	}
+
+
+	bind = (MYSQL_BIND *)calloc(bind_res_num, sizeof(*bind));
+	if (unlikely(!bind)) {
+		ret = MYSQL_ERR_PTR<MySQLStmtRes>(-ENOMEM);
+		goto err;
+	}
+
+
+	try {
+		ret = new MySQLStmtRes(result, stmt_, bind);
+	} catch (const std::bad_alloc &) {
+		ret = MYSQL_ERR_PTR<MySQLStmtRes>(-ENOMEM);
+		goto err;
+	}
+
 	return ret;
+
+err:
+	if (bind)
+		free(bind);
+
+	mysql_free_result(result);
+	return ret;
+}
+
+
+MySQLStmtRes::~MySQLStmtRes(void) noexcept
+{
+	if (bind_) {
+		free(bind_);
+		bind_ = nullptr;
+	}
+
+	if (res_) {
+		mysql_free_result(res_);
+		res_ = nullptr;
+	}
 }
 
 

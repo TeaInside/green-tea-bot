@@ -77,8 +77,10 @@ public:
 
 	inline ~MySQLRes(void) noexcept
 	{
-		if (res_)
+		if (res_) {
 			mysql_free_result(res_);
+			res_ = nullptr;
+		}
 	}
 
 
@@ -101,19 +103,82 @@ public:
 };
 
 
+class MySQLStmtRes
+{
+private:
+	MYSQL_RES *res_ = nullptr;
+	MYSQL_STMT *stmt_ = nullptr;
+	MYSQL_BIND *bind_ = nullptr;
+
+public:
+	~MySQLStmtRes(void) noexcept;
+
+
+	inline MySQLStmtRes(MYSQL_RES *res, MYSQL_STMT *stmt,
+			    MYSQL_BIND *bind) noexcept:
+		res_(res),
+		stmt_(stmt),
+		bind_(bind)
+	{
+	}
+
+
+	inline int numFields(void) noexcept
+	{
+		return mysql_num_fields(res_);
+	}
+
+
+	inline int fetchRow(void) noexcept
+	{
+		return mysql_stmt_fetch(stmt_);
+	}
+
+
+	inline MYSQL_RES *getRes(void) noexcept
+	{
+		return res_;
+	}
+};
+
+
 class MySQLStmt
 {
 private:
-	MYSQL_STMT *stmt_;
-	MYSQL_BIND *bind_;
-	size_t bind_num_;
+	MYSQL_STMT *stmt_ = nullptr;
+	MYSQL_BIND *bind_ = nullptr;
+	const char *q_ = nullptr;
+	size_t qlen_ = 0;
 
 public:
-	inline MySQLStmt(MYSQL_STMT *stmt, MYSQL_BIND *bind, size_t bind_num) noexcept:
+	~MySQLStmt(void) noexcept;
+	MySQLStmtRes *storeResult(size_t bind_res_num) noexcept;
+
+	inline MySQLStmt(MYSQL_STMT *stmt, MYSQL_BIND *bind, const char *q,
+			 size_t qlen) noexcept:
 		stmt_(stmt),
 		bind_(bind),
-		bind_num_(bind_num)
+		q_(q),
+		qlen_(qlen)
 	{
+	}
+
+
+	inline const char *getError(void) noexcept
+	{
+		return mysql_stmt_error(stmt_);
+	}
+
+
+	inline int getErrno(void) noexcept
+	{
+		return mysql_stmt_errno(stmt_);
+	}
+
+
+	inline int stmtInit(void) noexcept
+	{
+		return mysql_stmt_prepare(stmt_, q_, qlen_);
 	}
 
 

@@ -14,13 +14,10 @@
 
 static int test_prep_stmt_001(mysql::MySQL *db)
 {
-	int rnum;
-	int ret, i;
-	MYSQL_ROW row;
-	int num_fields;
 	mysql::MySQLRes *res;
 	mysql::MySQLStmt *st;
-	char qbuf[4096];
+	char qbuf[4096], i;
+	int rnum, ret;
 
 	static const char q_create_tbl[] =
 		"CREATE TABLE `users_%d` (" 							\
@@ -34,6 +31,8 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 	static const char q_insert[] =
 		"INSERT INTO `users_%d` VALUES (NULL, ?), (NULL, ?), (NULL, ?);";
 
+	static const char q_select[] =
+		"SELECT id, username FROM `users_%d` WHERE `username` = ?";
 
 	static const char q_drop_tbl[] = "DROP TABLE `users_%d`";
 
@@ -51,12 +50,48 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 	snprintf(qbuf, sizeof(qbuf), q_insert, rnum);
 	st = db->prepare(3, qbuf);
 	assert(st);
+	assert(!st->stmtInit());
 
-	st->bind(0, MYSQL_TYPE_STRING, (void *)"user_a", sizeof("user_a") - 1, NULL, NULL);
-	st->bind(1, MYSQL_TYPE_STRING, (void *)"user_b", sizeof("user_b") - 1, NULL, NULL);
-	st->bind(2, MYSQL_TYPE_STRING, (void *)"user_c", sizeof("user_c") - 1, NULL, NULL);
-	st->bindStmt();
-	st->execute();
+	for (i = 0; i < (10 * 3); i += 3) {
+		char ba[16], bb[16], bc[16];
+		size_t la, lb, lc;
+
+		la = (size_t) snprintf(ba, sizeof(ba), "user_%d", i + 0);
+		lb = (size_t) snprintf(bb, sizeof(bb), "user_%d", i + 1);
+		lc = (size_t) snprintf(bc, sizeof(bc), "user_%d", i + 2);
+
+		st->bind(0, MYSQL_TYPE_STRING, ba, la, NULL, NULL);
+		st->bind(1, MYSQL_TYPE_STRING, bb, lb, NULL, NULL);
+		st->bind(2, MYSQL_TYPE_STRING, bc, lc, NULL, NULL);
+		assert(!st->bindStmt());
+		assert(!st->execute());
+	}
+
+	delete st;
+
+	snprintf(qbuf, sizeof(qbuf), q_select, rnum);
+	st = db->prepare(1, qbuf);
+	assert(st);
+	assert(!st->stmtInit());
+
+	for (i = 0; i < (10 * 3); i++) {
+		mysql::MySQLStmtRes *res2;
+		char ba[16];
+		size_t la;
+
+		la = (size_t) snprintf(ba, sizeof(ba), "user_%d", i + 0);
+
+		st->bind(0, MYSQL_TYPE_STRING, ba, la, NULL, NULL);
+
+		res2 = st->storeResult(3);
+		assert(MYSQL_PTR_ERR<mysql::MySQLStmtRes>(res2) == -EINVAL);
+		res2 = st->storeResult(2);
+		assert(!MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmtRes>(res2));
+
+		assert(!st->bindStmt());
+		assert(!st->execute());
+		delete res2;
+	}
 
 	delete st;
 
