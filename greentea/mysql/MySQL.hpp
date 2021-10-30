@@ -137,13 +137,13 @@ public:
 	}
 
 
-	inline int storeResult(void)
+	inline int storeResult(void) noexcept
 	{
 		return mysql_stmt_store_result(stmt_);
 	}
 
 
-	inline int bindResult(void)
+	inline int bindResult(void) noexcept
 	{
 		return mysql_stmt_bind_result(stmt_, bind_);
 	}
