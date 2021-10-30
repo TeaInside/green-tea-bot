@@ -123,6 +123,32 @@ public:
 	}
 
 
+	inline MYSQL_BIND *bind(size_t i, enum enum_field_types type, void *buf,
+				size_t buflen, bool *is_null, size_t *len) noexcept
+	{
+		MYSQL_BIND *b = &bind_[i];
+
+		b->buffer_type   = type;
+		b->buffer        = buf;
+		b->buffer_length = buflen;
+		b->is_null       = is_null;
+		b->length        = len;
+		return b;
+	}
+
+
+	inline int storeResult(void)
+	{
+		return mysql_stmt_store_result(stmt_);
+	}
+
+
+	inline int bindResult(void)
+	{
+		return mysql_stmt_bind_result(stmt_, bind_);
+	}
+
+
 	inline int numFields(void) noexcept
 	{
 		return mysql_num_fields(res_);
@@ -183,15 +209,13 @@ public:
 
 
 	inline MYSQL_BIND *bind(size_t i, enum enum_field_types type, void *buf,
-				size_t buflen, bool *is_null, size_t *len) noexcept
+				size_t buflen) noexcept
 	{
 		MYSQL_BIND *b = &bind_[i];
 
 		b->buffer_type   = type;
 		b->buffer        = buf;
 		b->buffer_length = buflen;
-		b->is_null       = is_null;
-		b->length        = len;
 		return b;
 	}
 

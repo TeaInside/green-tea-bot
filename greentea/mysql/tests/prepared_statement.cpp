@@ -32,7 +32,7 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 		"INSERT INTO `users_%d` VALUES (NULL, ?), (NULL, ?), (NULL, ?);";
 
 	static const char q_select[] =
-		"SELECT id, username FROM `users_%d` WHERE `username` = ?";
+		"SELECT `id`, `username` FROM `users_%d` WHERE `username` = ? ORDER BY `id`";
 
 	static const char q_drop_tbl[] = "DROP TABLE `users_%d`";
 
@@ -60,9 +60,9 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 		lb = (size_t) snprintf(bb, sizeof(bb), "user_%d", i + 1);
 		lc = (size_t) snprintf(bc, sizeof(bc), "user_%d", i + 2);
 
-		st->bind(0, MYSQL_TYPE_STRING, ba, la, NULL, NULL);
-		st->bind(1, MYSQL_TYPE_STRING, bb, lb, NULL, NULL);
-		st->bind(2, MYSQL_TYPE_STRING, bc, lc, NULL, NULL);
+		st->bind(0, MYSQL_TYPE_STRING, ba, la);
+		st->bind(1, MYSQL_TYPE_STRING, bb, lb);
+		st->bind(2, MYSQL_TYPE_STRING, bc, lc);
 		assert(!st->bindStmt());
 		assert(!st->execute());
 	}
@@ -75,13 +75,17 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 	assert(!st->stmtInit());
 
 	for (i = 0; i < (10 * 3); i++) {
+		bool is_null[2];
+		size_t reslen[2];
+		char buf[2][0xff];
+
 		mysql::MySQLStmtRes *res2;
 		char ba[16];
 		size_t la;
 
 		la = (size_t) snprintf(ba, sizeof(ba), "user_%d", i + 0);
 
-		st->bind(0, MYSQL_TYPE_STRING, ba, la, NULL, NULL);
+		st->bind(0, MYSQL_TYPE_STRING, ba, la);
 
 		res2 = st->storeResult(3);
 		assert(MYSQL_PTR_ERR<mysql::MySQLStmtRes>(res2) == -EINVAL);
@@ -90,6 +94,16 @@ static int test_prep_stmt_001(mysql::MySQL *db)
 
 		assert(!st->bindStmt());
 		assert(!st->execute());
+
+		res2->bind(0, MYSQL_TYPE_STRING, buf[0], sizeof(buf[0]), &is_null[0], &reslen[0]);
+		res2->bind(1, MYSQL_TYPE_STRING, buf[1], sizeof(buf[1]), &is_null[1], &reslen[1]);
+		assert(!res2->bindResult());
+
+		while (!res2->fetchRow()) {
+			assert(atoi(buf[0]) == (i + 1));
+			assert(!strcmp(buf[1], ba));
+		}
+
 		delete res2;
 	}
 
