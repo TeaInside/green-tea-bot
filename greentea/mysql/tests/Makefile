@@ -33,14 +33,13 @@ runtests: $(CXX_TESTS:=__do_test)
 libclang_rt.asan-x86_64.so:
 	ln -sv $(shell $(CC) -print-file-name=libasan.so) $(@)
 
+../MySQL.o: ../MySQL.cpp
+	$(CXX) $(CXXFLAGS) -c -o $(@) $(^)
 
 define GEN_TEST
 
-$(1:=.o): $(1:=.cpp)
-	$(CXX) $(CXXFLAGS) -c -o $(1:=.o) $(1:=.cpp)
-
-$(1:=.test): $(1:=.o) ../MySQL.o
-	$(CXX) $(CXXFLAGS) -o $(1:=.test) $(1:=.o) ../MySQL.o $(LIB_LDFLAGS)
+$(1:=.test): $(1:=.cpp) ../MySQL.o
+	$(CXX) $(CXXFLAGS) -o $(1:=.test) $(1:=.cpp) ../MySQL.o $(LIB_LDFLAGS)
 
 $(1:=__do_test): $(1:=.test) libclang_rt.asan-x86_64.so
 	@echo "Running $(1:=.test)...";
