@@ -276,7 +276,7 @@ public:
 	}
 
 
-	__cold inline int ping(void) noexcept
+	inline int ping(void) noexcept
 	{
 		return mysql_ping(conn_);
 	}
