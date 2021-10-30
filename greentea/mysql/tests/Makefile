@@ -1,3 +1,7 @@
+# SPDX-License-Identfier: GPL-2.0-only
+#
+# Copyright (C)  2021 Ammar Faizi <ammarfaizi2@gmail.com>
+#
 
 CFLAGS := -Wall -Wextra -O3 -ggdb3 -I.. -fsanitize=address -fno-omit-frame-pointer
 CXXFLAGS := -Wall -Wextra -O3 -ggdb3 -I.. -fsanitize=address -fno-omit-frame-pointer

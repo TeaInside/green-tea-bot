@@ -1,4 +1,8 @@
 #!/bin/sh
+# SPDX-License-Identfier: GPL-2.0-only
+#
+# Copyright (C)  2021 Ammar Faizi <ammarfaizi2@gmail.com>
+#
 
 if test -z "$TEST_MYSQL_HOST"; then
   export TEST_MYSQL_HOST="127.0.0.1"
