@@ -147,7 +147,7 @@ template <typename T, typename U>
 td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
 					  uint32_t timeout)
 {
-	return send_query_sync<T, U>(method, timeout, nullptr);
+	return send_query_sync<T, U>(std::move(method), timeout, nullptr);
 }
 
 
