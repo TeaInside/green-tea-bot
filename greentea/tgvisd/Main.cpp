@@ -28,7 +28,19 @@ __cold Main::Main(uint32_t api_id, const char *api_hash, const char *data_path):
 
 	pr_notice("Spawning scraper thread...");
 	scraperThread_ = new std::thread([this]{
-		Scraper *st = new Scraper(this, this->scraperThread_);
+		Scraper *st;
+
+		/*
+		 * The assignment to scraperThread_ outside this
+		 * lambda might've not happened yet we the thread's
+		 * PC enters this lambda. Thus `this->scraperThread_`
+		 * may be NULL. Let's make sure the assignment has
+		 * been done before we run the scraper work.
+		 */
+		while (unlikely(!this->scraperThread_))
+			cpu_relax();
+
+		st = new Scraper(this, this->scraperThread_);
 		st->run();
 		delete st;
 	});
