@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
- * @license GPL-2.0
+ * @license GPL-2.0-only
  * @package tgvisd::Td
  *
  * Copyright (C) 2021 Ammar Faizi <ammarfaizi2@gmail.com>

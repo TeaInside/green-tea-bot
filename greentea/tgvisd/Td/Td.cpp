@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
- * @license GPL-2.0
+ * @license GPL-2.0-only
  * @package tgvisd::Td
  *
  * Copyright (C) 2021 Ammar Faizi <ammarfaizi2@gmail.com>
@@ -309,6 +309,14 @@ __cold void Td::on_authorization_state_update(void)
 		)
 	);
 	on_auth_update_mutex.unlock();
+}
+
+
+__cold void Td::close(void)
+{
+	send_query(td_api::make_object<td_api::close>(), {});
+	std::cout << "Waiting for authorizationStateClosed..." << std::endl;
+	loop(5);
 }
 
 

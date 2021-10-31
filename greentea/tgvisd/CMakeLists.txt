@@ -8,6 +8,9 @@ list(APPEND CMAKE_PREFIX_PATH "tdlib/lib/cmake/Td")
 find_package(Td 1.7.8 REQUIRED)
 
 
+include_directories(..)
+include_directories(tdlib/include)
+
 ##################################################################
 #
 # TD core wrapper
@@ -23,7 +26,7 @@ set(
 # Build Tdlib wrapper as a shared library.
 add_library(tgvisdtd SHARED ${TGVISDTD_SOURCE})
 set_property(TARGET tgvisdtd PROPERTY CXX_STANDARD 20)
-target_link_libraries(tgvisdtd PRIVATE Td::TdStatic)
+target_link_libraries(tgvisdtd PRIVATE Td::TdStatic pthread)
 target_include_directories(tgvisdtd PRIVATE tdlib/include)
 target_compile_options(tgvisdtd PRIVATE
 	-ggdb3
@@ -49,12 +52,19 @@ target_compile_options(tgvisdtd PRIVATE
 
 set(
 	TGVISD_SOURCE
-	main.cpp
+	common.hpp
+	entry.cpp
+	Main.cpp
+	Main.hpp
+	print.c
+	print.h
+	Scraper.cpp
+	Scraper.hpp
 )
 
 add_executable(tgvisd ${TGVISD_SOURCE})
 set_property(TARGET tgvisd PROPERTY CXX_STANDARD 20)
-target_link_libraries(tgvisd tgvisdtd)
+target_link_libraries(tgvisd PRIVATE tgvisdtd pthread)
 target_compile_options(tgvisd PRIVATE
 	-ggdb3
 	-Wall
