@@ -31,9 +31,13 @@
 #include <td/telegram/td_api.hpp>
 
 #include <mutex>
+#include <chrono>
 #include <atomic>
 #include <functional>
 #include <unordered_map>
+#include <condition_variable>
+
+#include <tgvisd/print.h>
 
 #include "Callback.hpp"
 
@@ -47,7 +51,10 @@ using std::atomic;
 using std::string;
 using std::function;
 using std::unique_ptr;
+using std::unique_lock;
 using std::unordered_map;
+using std::condition_variable;
+using namespace std::chrono_literals;
 
 
 class Td
@@ -96,7 +103,101 @@ public:
 
 	void loop(int timeout);
 	void close(void);
+
+	template <typename T, typename U>
+	td_api::object_ptr<U> send_query_sync(td_api::object_ptr<T> method,
+					      uint32_t timeout);
+
+	template <typename T, typename U>
+	td_api::object_ptr<U> send_query_sync(td_api::object_ptr<T> method,
+					      uint32_t timeout,
+					      td_api::object_ptr<td_api::error> *err);
 };
+
+
+template <typename U>
+static inline void query_sync_callback(condition_variable *cond,
+				       volatile bool *finished,
+				       td_api::object_ptr<U> *ret,
+				       td_api::object_ptr<td_api::error> *err)
+{
+	return [=](td_api::object_ptr<td_api::Object> obj) {
+
+		if (obj->get_id() == td_api::error::ID) {
+			if (err)
+				*err = td::move_tl_object_as<td_api::error>(obj);
+			goto out;
+		}
+
+		if (obj->get_id() != U::ID) {
+			pr_error("Invalid object returned on send_query_sync");
+			goto out;
+		}
+
+		*ret = td::move_tl_object_as<U>(obj);
+
+	out:
+		*finished = true;
+		cond->notify_one();
+	};
+}
+
+
+template <typename T, typename U>
+td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
+					  uint32_t timeout)
+{
+	return send_query_sync<T, U>(method, timeout, nullptr);
+}
+
+
+/*
+ * T for the method name.
+ * U for the return value.
+ */
+template <typename T, typename U>
+td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
+					  uint32_t timeout,
+					  td_api::object_ptr<td_api::error> *err)
+{
+	mutex mut;
+	condition_variable cond;
+	unique_lock<mutex> lock(mut, std::defer_lock);
+	td_api::object_ptr<U> ret;
+	volatile bool finished = false;
+
+	uint32_t secs = 0;
+	const uint32_t warnOnSecs = 120;
+
+	send_query(std::move(method), query_sync_callback<U>(&cond, &finished,
+							     &ret, err));
+
+	lock.lock();
+	while (!finished) {
+		cond.wait_for(lock, 1000ms);
+
+		if (likely(finished))
+			break;
+
+		if (unlikely(++secs >= warnOnSecs)) {
+			pr_notice("Warning: send_query_sync() blocked for more "
+				  "than %u seconds", secs);
+
+			/* TODO: dump_stack() here... */
+		}
+
+		if (unlikely(timeout > 0 && secs >= timeout)) {
+			pr_notice("Warning: send_query_sync() reached timeout "
+				  "after %u seconds", secs);
+
+			/* TODO: dump_stack() here... */
+			break;
+		}
+	}
+
+	return ret;
+}
+
 
 } /* namespace tgvisd::Td */
 
