@@ -116,7 +116,7 @@ public:
 
 
 template <typename U>
-static inline void query_sync_callback(condition_variable *cond,
+static inline auto query_sync_callback(condition_variable *cond,
 				       volatile bool *finished,
 				       td_api::object_ptr<U> *ret,
 				       td_api::object_ptr<td_api::error> *err)
