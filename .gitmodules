@@ -1,0 +1,3 @@
+[submodule "greentea/td"]
+	path = greentea/td
+	url = https://github.com/tdlib/td
