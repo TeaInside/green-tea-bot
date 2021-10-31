@@ -23,13 +23,13 @@ int main(void)
 	}
 
 	api_hash = getenv("TGVISD_API_HASH");
-	if (!api_id) {
+	if (!api_hash) {
 		puts("Missing TGVISD_API_HASH");
 		return 1;
 	}
 
 	data_path = getenv("TGVISD_DATA_PATH");
-	if (!api_id) {
+	if (!data_path) {
 		puts("Missing TGVISD_DATA_PATH");
 		return 1;
 	}
