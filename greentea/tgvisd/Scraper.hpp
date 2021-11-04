@@ -20,24 +20,28 @@ namespace tgvisd {
 
 class Scraper {
 private:
-	tgvisd::Td::Td *td_ = nullptr;
 	Main *main_ = nullptr;
 	std::thread *threadPtr_ = nullptr;
-	volatile bool stopScraper = false;
+	volatile bool stopScraper_ = false;
 
 	void scraperEventLoop(void);
-
-
-	td_api::object_ptr<td_api::chats> getChats(
-		td_api::object_ptr<td_api::ChatList> &&chatList, int32_t limit);
-
-	void scrapeChat(int64_t chat_id);
-	td_api::object_ptr<td_api::chat> getChat(int64_t chat_id);
 
 public:
 	Scraper(Main *main, std::thread *threadPtr);
 	~Scraper(void);
 	void run(void);
+
+
+	inline bool getStop(void)
+	{
+		return stopScraper_;
+	}
+
+
+	inline void doStop(void)
+	{
+		stopScraper_ = true;
+	}
 
 
 	inline Main *getMain(void)

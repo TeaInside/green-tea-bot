@@ -36,6 +36,7 @@ target_compile_options(tgvisdtd PRIVATE
 	-Wno-unused-parameter
 	-fno-omit-frame-pointer
 	-fstack-protector-strong
+	-fsanitize=address
 )
 ##################################################################
 
@@ -52,6 +53,8 @@ target_compile_options(tgvisdtd PRIVATE
 
 set(
 	TGVISD_SOURCE
+	../mysql/MySQL.cpp
+	../mysql/MySQL.hpp
 	common.hpp
 	entry.cpp
 	Main.cpp
@@ -64,7 +67,7 @@ set(
 
 add_executable(tgvisd ${TGVISD_SOURCE})
 set_property(TARGET tgvisd PROPERTY CXX_STANDARD 20)
-target_link_libraries(tgvisd PRIVATE tgvisdtd pthread)
+target_link_libraries(tgvisd PRIVATE asan tgvisdtd mysqlclient pthread)
 target_compile_options(tgvisd PRIVATE
 	-ggdb3
 	-Wall
@@ -73,5 +76,6 @@ target_compile_options(tgvisd PRIVATE
 	-Wno-unused-parameter
 	-fno-omit-frame-pointer
 	-fstack-protector-strong
+	-fsanitize=address
 )
 ##################################################################

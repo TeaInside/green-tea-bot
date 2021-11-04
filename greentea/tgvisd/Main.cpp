@@ -32,7 +32,7 @@ __cold Main::Main(uint32_t api_id, const char *api_hash, const char *data_path):
 
 		/*
 		 * The assignment to scraperThread_ outside this
-		 * lambda might've not happened yet we the thread's
+		 * lambda might've not happened yet when the thread's
 		 * PC enters this lambda. Thus `this->scraperThread_`
 		 * may be NULL. Let's make sure the assignment has
 		 * been done before we run the scraper work.
