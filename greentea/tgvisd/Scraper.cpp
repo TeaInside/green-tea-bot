@@ -23,7 +23,6 @@
 #include <unordered_map>
 #include <condition_variable>
 #include <tgvisd/Scraper.hpp>
-
 #include <mysql/MySQL.hpp>
 
 
@@ -65,7 +64,7 @@ static void run_kworker_event_loop(KWorker *kwrk);
 
 
 struct task_work {
-	int64_t		chat_id;
+	td_api::object_ptr<td_api::chat>	chat;
 };
 
 
@@ -194,7 +193,7 @@ public:
 		ftLock_.unlock();
 
 		tasks_[kwrk_id].is_used = true;
-		tasks_[kwrk_id].tw = *tw;
+		tasks_[kwrk_id].tw = std::move(*tw);
 		ftCond_.notify_all();
 		return 0;
 	}
@@ -208,6 +207,13 @@ public:
 		ftLock_.unlock();
 
 		ftCond_.notify_all();
+	}
+
+
+	inline void waitForWorker(void)
+	{
+		std::unique_lock<mutex> lk(ftLock_);
+		ftCond_.wait_for(lk, 1000ms);
 	}
 
 
@@ -267,12 +273,37 @@ public:
 
 	inline void run(void)
 	{
-		kwrkPool_ = new KWorkerPool(4, this);
+		kwrkPool_ = new KWorkerPool(10, this);
 		kwrkPool_->spawn();
 		run_kworker_event_loop(this);
 		scraper_->doStop();
 		delete kwrkPool_;
 		kwrkPool_ = nullptr;
+	}
+
+
+	static constexpr uint32_t query_sync_timeout = 150;
+
+
+	inline td_api::object_ptr<td_api::chats> getChats(
+		td_api::object_ptr<td_api::ChatList> &&chatList, int32_t limit)
+	{
+		return td_->send_query_sync<td_api::getChats, td_api::chats>(
+			td_api::make_object<td_api::getChats>(
+				std::move(chatList),
+				limit
+			),
+			query_sync_timeout
+		);
+	}
+
+
+	inline td_api::object_ptr<td_api::chat> getChat(int64_t chat_id)
+	{
+		return td_->send_query_sync<td_api::getChat, td_api::chat>(
+			td_api::make_object<td_api::getChat>(chat_id),
+			query_sync_timeout
+		);
 	}
 };
 
@@ -331,7 +362,8 @@ static void _run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
 	if (!twl->is_used)
 		return;
 
-	printf("Scraping chat_id = %ld\n", twl->tw.chat_id);
+	pr_notice("[tid=%d] Scraping chat_id = %ld", gettid(), twl->tw.chat->id_);
+	sleep(1);
 	kwrk_pool->putTaskWork(kwrk_id);
 }
 
@@ -348,27 +380,66 @@ static void run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool)
 }
 
 
+static int __run_kworker_event_loop(KWorker *kwrk, KWorkerPool *kwrk_pool,
+				    td_api::object_ptr<td_api::chat> chat)
+{
+	int ret;
+	bool dbg = false;
+	struct task_work tw;
+
+	tw.chat = std::move(chat);
+	while (1) {
+
+		if (kwrk->kworkerShouldStop())
+			return -EOWNERDEAD;
+
+		if (!dbg) {
+			pr_debug("scraper-master: Submitting %ld",
+				 tw.chat->id_);
+			dbg = true;
+		}
+
+		ret = kwrk_pool->submitTaskWork(&tw);
+		if (ret == -EAGAIN)
+			kwrk_pool->waitForWorker();
+		else
+			break;
+	}
+
+	return 0;
+}
+
+
+static void _run_kworker_event_loop(KWorker *kwrk, KWorkerPool *kwrk_pool)
+{
+	int32_t i;
+	int64_t chat_id;
+	auto chats = kwrk->getChats(nullptr, 300);
+
+	if (!chats)
+		return;
+
+	for (i = 0; i < chats->total_count_; i++) {
+		chat_id = chats->chat_ids_[i];
+		auto chat = kwrk->getChat(chat_id);
+
+		if (!chat)
+			continue;
+		if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID)
+			continue;
+		if (__run_kworker_event_loop(kwrk, kwrk_pool, std::move(chat)))
+			break;
+	}
+}
+
+
 static void run_kworker_event_loop(KWorker *kwrk)
 {
-	int64_t i = 0;
-	struct task_work tw;
 	KWorkerPool *kwrk_pool;
 
 	kwrk_pool = kwrk->getKWorkerPool();
-	for (i = 0; i < 1000; i++) {
-		int ret;
-
-		tw.chat_id = i;
-	submit_again:
-		if (kwrk->kworkerShouldStop())
-			return;
-
-		ret = kwrk_pool->submitTaskWork(&tw);
-		if (ret == -EAGAIN) {
-			pr_notice("Threads are all busy...");
-			goto submit_again;
-		}
-	}
+	while (!kwrk->kworkerShouldStop())
+		_run_kworker_event_loop(kwrk, kwrk_pool);
 }
 
 
