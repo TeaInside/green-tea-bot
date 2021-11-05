@@ -232,6 +232,9 @@ private:
 	Scraper			*scraper_   = nullptr;
 	KWorkerPool		*kwrkPool_  = nullptr;
 
+	mutex				clmLock;
+	unordered_map<int64_t, mutex *>	chatLockMap_;
+	volatile bool			dropChatLock_ = false;
 public:
 	inline tgvisd::Td::Td *getTd(void)
 	{
@@ -262,6 +265,44 @@ public:
 	{
 		main_ = scraper->getMain();
 		td_   = main_->getTd();
+	}
+
+
+	inline ~KWorker(void)
+	{
+		dropChatLock_ = true;
+		for (auto &i: chatLockMap_) {
+			mutex *mut = i.second;
+			if (!mut)
+				continue;
+
+			mut->lock();
+			mut->unlock();
+			delete mut;
+			i.second = nullptr;
+		}
+	}
+
+
+	inline mutex *getChatLock(int64_t chat_id)
+		__acquires(&clmLock)
+		__releases(&clmLock)
+	{
+		mutex *ret;
+
+		if (unlikely(dropChatLock_))
+			return nullptr;
+
+		clmLock.lock();
+		const auto &i = chatLockMap_.find(chat_id);
+		if (i == chatLockMap_.end()) {
+			ret = new mutex;
+			chatLockMap_.emplace(chat_id, ret);
+		} else {
+			ret = i->second;
+		}
+		clmLock.unlock();
+		return ret;
 	}
 
 
@@ -349,8 +390,28 @@ static void wait_for_pool_assignment(uint32_t kwrk_id, KWorkerPool *kwrk_pool)
 }
 
 
+static void __run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
+			  KWorker *kwrk, struct task_work *tw)
+{
+	int64_t chat_id;
+	mutex *chatLock;
+
+	chat_id  = tw->chat->id_;
+	chatLock = kwrk->getChatLock(chat_id);
+	if (unlikely(!chatLock)) {
+		pr_err("[tid=%d] Cannot get lock for chat_id = %ld", gettid(),
+		       chat_id);
+		return;
+	}
+
+	chatLock->lock();
+	pr_notice("[tid=%d] Scraping chat_id = %ld", gettid(), chat_id);
+	chatLock->unlock();
+}
+
+
 static void _run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
-			 std::unique_lock<mutex> &lk)
+			 KWorker *kwrk, std::unique_lock<mutex> &lk)
 {
 	struct task_work_list *twl;
 
@@ -362,8 +423,7 @@ static void _run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
 	if (!twl->is_used)
 		return;
 
-	pr_notice("[tid=%d] Scraping chat_id = %ld", gettid(), twl->tw.chat->id_);
-	sleep(1);
+	__run_kworker(kwrk_id, kwrk_pool, kwrk, &twl->tw);
 	kwrk_pool->putTaskWork(kwrk_id);
 }
 
@@ -376,7 +436,7 @@ static void run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool)
 	wait_for_pool_assignment(kwrk_id, kwrk_pool);
 
 	while (!kwrk->kworkerShouldStop())
-		_run_kworker(kwrk_id, kwrk_pool, lk);
+		_run_kworker(kwrk_id, kwrk_pool, kwrk, lk);
 }
 
 
@@ -400,10 +460,11 @@ static int __run_kworker_event_loop(KWorker *kwrk, KWorkerPool *kwrk_pool,
 		}
 
 		ret = kwrk_pool->submitTaskWork(&tw);
-		if (ret == -EAGAIN)
+		if (ret == -EAGAIN) {
 			kwrk_pool->waitForWorker();
-		else
+		} else {
 			break;
+		}
 	}
 
 	return 0;
@@ -416,14 +477,14 @@ static void _run_kworker_event_loop(KWorker *kwrk, KWorkerPool *kwrk_pool)
 	int64_t chat_id;
 	auto chats = kwrk->getChats(nullptr, 300);
 
-	if (!chats)
+	if (unlikely(!chats))
 		return;
 
 	for (i = 0; i < chats->total_count_; i++) {
 		chat_id = chats->chat_ids_[i];
 		auto chat = kwrk->getChat(chat_id);
 
-		if (!chat)
+		if (unlikely(!chat))
 			continue;
 		if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID)
 			continue;
