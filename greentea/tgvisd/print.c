@@ -9,9 +9,14 @@
 #include <stdarg.h>
 #include <tgvisd/print.h>
 
+#ifndef _GNU_SOURCE
+	#define _GNU_SOURCE
+#endif
 
 #if defined(__linux__)
+	#include <unistd.h>
 	#include <pthread.h>
+	#include <sys/types.h>
 	static pthread_mutex_t get_time_lock = PTHREAD_MUTEX_INITIALIZER;
 	static pthread_mutex_t print_lock    = PTHREAD_MUTEX_INITIALIZER;
 #else
@@ -50,7 +55,7 @@ void __attribute__((format(printf, 1, 2))) __pr_notice(const char *fmt, ...)
 
 	va_start(vl, fmt);
 	pthread_mutex_lock(&print_lock);
-	printf("[%s] ", get_time(buf));
+	printf("[%s][T%d] ", get_time(buf), gettid());
 	vprintf(fmt, vl);
 	putchar('\n');
 	pthread_mutex_unlock(&print_lock);
@@ -65,7 +70,7 @@ void __attribute__((format(printf, 1, 2))) __pr_error(const char *fmt, ...)
 
 	va_start(vl, fmt);
 	pthread_mutex_lock(&print_lock);
-	printf("[%s] Error: ", get_time(buf));
+	printf("[%s][T%d] Error: ", get_time(buf), gettid());
 	vprintf(fmt, vl);
 	putchar('\n');
 	pthread_mutex_unlock(&print_lock);
@@ -80,7 +85,7 @@ void __attribute__((format(printf, 1, 2)))__pr_emerg(const char *fmt, ...)
 
 	va_start(vl, fmt);
 	pthread_mutex_lock(&print_lock);
-	printf("[%s] Emergency: ", get_time(buf));
+	printf("[%s][T%d] Emergency: ", get_time(buf), gettid());
 	vprintf(fmt, vl);
 	putchar('\n');
 	pthread_mutex_unlock(&print_lock);

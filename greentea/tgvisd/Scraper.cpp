@@ -366,6 +366,21 @@ public:
 			query_sync_timeout
 		);
 	}
+
+
+	uint64_t touchGroup(td_api::object_ptr<td_api::chat> &chat);
+
+
+	inline uint64_t touchGroupByChatId(int64_t chat_id)
+	{
+		auto chat = getChat(chat_id);
+		if (unlikely(!chat)) {
+			pr_err("[tid:%d] touchGroupByChatId() cannot find chat "
+			       "%ld", gettid(), chat_id);
+			return 0;
+		}
+		return touchGroup(chat);
+	}
 };
 
 
@@ -386,6 +401,17 @@ void Scraper::run(void)
 
 	if (kworker)
 		delete kworker;
+}
+
+
+uint64_t KWorker::touchGroup(td_api::object_ptr<td_api::chat> &chat)
+{
+	if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID) {
+		pr_err("Chat %ld (%s) is not a super group", chat->id_,
+		       chat->title_.c_str());
+		return 0;
+	}
+	return 0;
 }
 
 
@@ -422,7 +448,8 @@ static void _scrape_chat_history(KWorker *kwrk,
 		return;
 
 	auto &text = static_cast<td_api::messageText &>(*content);
-	pr_notice("text = %s", text.text_->text_.c_str());
+	// pr_notice("text = %s", text.text_->text_.c_str());
+	__asm__ volatile(""::"m"(text):"memory");
 }
 
 
@@ -431,7 +458,11 @@ static void scrape_chat_history(KWorker *kwrk,
 {
 	int32_t i, count;
 
-	pr_notice("[tid=%d] Scraping %ld...", gettid(), chat->id_);
+	pr_debug("[tid=%d] Touching group %ld (%s)...", gettid(), chat->id_,
+		 chat->title_.c_str());
+
+	// kwrk->touchChat(chat);
+
 
 	auto messages = kwrk->getChatHistory(chat->id_, 0, 0, 300);
 	if (unlikely(!messages)) {
@@ -467,14 +498,14 @@ static void __run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
 		return;
 	}
 
-	chatLock->lock();
 	scrape_chat_history(kwrk, tw->chat);
-	chatLock->unlock();
 }
 
 
 static void _run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
 			 KWorker *kwrk, std::unique_lock<mutex> &lk)
+	__acquires(&lk)
+	__releases(&lk)
 {
 	struct task_work_list *twl;
 
