@@ -49,6 +49,8 @@ __cold Main::Main(uint32_t api_id, const char *api_hash, const char *data_path):
 
 __cold Main::~Main(void)
 {
+	td_.setCancelDelayedWork(true);
+
 	if (scraperThread_) {
 		pr_notice("Waiting for scraper thread to exit...");
 		scraperThread_->join();

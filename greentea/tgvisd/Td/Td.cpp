@@ -19,6 +19,9 @@ namespace td_api = td::td_api;
 using Object = td_api::object_ptr<td_api::Object>;
 
 
+volatile bool cancel_delayed_work = false;
+
+
 __cold Td::Td(uint32_t api_id, const char *api_hash, const char *data_path):
 	api_id_(api_id),
 	api_hash_(api_hash),
@@ -39,8 +42,11 @@ __hot void Td::send_query(td_api::object_ptr<td_api::Function> f,
 	uint64_t query_id;
 
 	query_id = next_query_id();
-	if (handler)
+	if (handler) {
+		handlersMutex_.lock();
 		handlers_.emplace(query_id, std::move(handler));
+		handlersMutex_.unlock();
+	}
 
 	client_manager_->send(client_id_, query_id, std::move(f));
 }
@@ -75,10 +81,22 @@ __hot void Td::process_response(td::ClientManager::Response res)
 		return;
 	}
 
-	auto it = handlers_.find(res.request_id);
-	if (it != handlers_.end()) {
-		it->second(std::move(res.object));
-		handlers_.erase(it);
+
+	{
+		bool cond;
+		function<void(Object)> userCallback;
+
+		handlersMutex_.lock();
+		auto it = handlers_.find(res.request_id);
+		cond = (it != handlers_.end());
+		if (cond) {
+			userCallback = std::move(it->second);
+			handlers_.erase(it);
+		}
+		handlersMutex_.unlock();
+
+		if (cond)
+			userCallback(std::move(res.object));
 	}
 }
 

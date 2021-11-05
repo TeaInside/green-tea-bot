@@ -11,19 +11,30 @@
 #define TGVISD__TD__TD_HPP
 
 #ifndef likely
-#define likely(EXPR)	__builtin_expect((bool)(EXPR), 1)
+	#define likely(EXPR)	__builtin_expect((bool)(EXPR), 1)
 #endif
 
 #ifndef unlikely
-#define unlikely(EXPR)	__builtin_expect((bool)(EXPR), 0)
+	#define unlikely(EXPR)	__builtin_expect((bool)(EXPR), 0)
 #endif
 
 #ifndef __hot
-#define __hot		__attribute__((__hot__))
+	#define __hot		__attribute__((__hot__))
 #endif
 
 #ifndef __cold
-#define __cold		__attribute__((__cold__))
+	#define __cold		__attribute__((__cold__))
+#endif
+
+#ifndef _GNU_SOURCE
+	#define _GNU_SOURCE
+#endif
+
+#if defined(__linux__)
+	#include <unistd.h>
+	#include <sys/types.h>
+#else
+	#define gettid() -1
 #endif
 
 #include <td/telegram/Client.h>
@@ -57,6 +68,9 @@ using std::condition_variable;
 using namespace std::chrono_literals;
 
 
+extern volatile bool cancel_delayed_work;
+
+
 class Td
 {
 private:
@@ -83,6 +97,7 @@ private:
 	atomic<uint64_t> authentication_query_id_ = 0;
 
 	mutex on_auth_update_mutex;
+	mutex handlersMutex_;
 
 	bool closed_ = false;
 	bool need_restart_ = false;
@@ -112,6 +127,18 @@ public:
 	td_api::object_ptr<U> send_query_sync(td_api::object_ptr<T> method,
 					      uint32_t timeout,
 					      td_api::object_ptr<td_api::error> *err);
+
+
+	inline void setCancelDelayedWork(bool cancel)
+	{
+		cancel_delayed_work = true;
+	}
+
+
+	inline bool getCancelDelayedWork(void)
+	{
+		return cancel_delayed_work;
+	}
 };
 
 
@@ -124,8 +151,10 @@ static inline auto query_sync_callback(condition_variable *cond,
 	return [=](td_api::object_ptr<td_api::Object> obj) {
 
 		if (obj->get_id() == td_api::error::ID) {
-			if (err)
+			if (err) {
 				*err = td::move_tl_object_as<td_api::error>(obj);
+				pr_err("Got error on query_sync_callback");
+			}
 			goto out;
 		}
 
@@ -174,20 +203,24 @@ td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
 
 	lock.lock();
 	while (!finished) {
+
+		if (unlikely(getCancelDelayedWork()))
+			break;
+
 		cond.wait_for(lock, 1000ms);
 
 		if (likely(finished))
 			break;
 
 		if (unlikely(++secs >= warnOnSecs))
-			pr_notice("Warning: send_query_sync() blocked for more "
-				  "than %u seconds [tid=%ld]", secs,
-				  (long)gettid());
+			pr_notice("[tid=%ld] Warning: send_query_sync() blocked "
+				  "for more than %u seconds", (long)gettid(),
+				  secs);
 
 		if (unlikely(timeout > 0 && secs >= timeout)) {
-			pr_notice("Warning: send_query_sync() reached timeout "
-				  "after %u seconds [tid=%ld]", secs,
-				  (long)gettid());
+			pr_notice("[tid=%ld] Warning: send_query_sync() reached "
+				  "timeout after %u seconds", (long)gettid(),
+				  secs);
 			break;
 		}
 	}
