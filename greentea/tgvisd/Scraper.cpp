@@ -69,7 +69,7 @@ struct task_work {
 
 
 struct task_work_list {
-	bool			is_used;
+	volatile bool		is_used = false;
 	struct task_work	tw;
 };
 
@@ -187,13 +187,13 @@ public:
 			ftLock_.unlock();
 			return -EAGAIN;
 		}
-
 		kwrk_id = freeThreads_.top();
 		freeThreads_.pop();
 		ftLock_.unlock();
 
-		tasks_[kwrk_id].is_used = true;
 		tasks_[kwrk_id].tw = std::move(*tw);
+		tasks_[kwrk_id].is_used = true;
+
 		ftCond_.notify_all();
 		return 0;
 	}
@@ -201,8 +201,10 @@ public:
 
 	inline void putTaskWork(uint16_t kwrk_id)
 	{
-		ftLock_.lock();
 		tasks_[kwrk_id].is_used = false;
+		tasks_[kwrk_id].tw.chat.reset();
+
+		ftLock_.lock();
 		freeThreads_.push(kwrk_id);
 		ftLock_.unlock();
 
