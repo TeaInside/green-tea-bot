@@ -118,7 +118,7 @@ private:
 		}
 
 		if (tasks_) {
-			free(tasks_);
+			delete[] tasks_;
 			tasks_ = nullptr;
 		}
 	}
@@ -156,9 +156,7 @@ public:
 		if (unlikely(!dbPool_))
 			goto err_nomem;
 
-		tasks_ = (struct task_work_list *)calloc(wrkNum_, sizeof(*tasks_));
-		if (unlikely(!tasks_))
-			goto err_nomem;
+		tasks_ = new task_work_list[wrkNum_];
 
 		for (i = 0; i < wrkNum_; i++) {
 			threads_[i] = new std::thread(run_kworker, i, this);
@@ -187,13 +185,11 @@ public:
 			ftLock_.unlock();
 			return -EAGAIN;
 		}
-
 		kwrk_id = freeThreads_.top();
 		freeThreads_.pop();
-		ftLock_.unlock();
-
 		tasks_[kwrk_id].is_used = true;
-		tasks_[kwrk_id].tw = std::move(*tw);
+		tasks_[kwrk_id].tw.chat = std::move(tw->chat);
+		ftLock_.unlock();
 		ftCond_.notify_all();
 		return 0;
 	}
@@ -203,6 +199,7 @@ public:
 	{
 		ftLock_.lock();
 		tasks_[kwrk_id].is_used = false;
+		tasks_[kwrk_id].tw.chat.reset((td_api::chat *)0xdeadbeefdeadbeeful);
 		freeThreads_.push(kwrk_id);
 		ftLock_.unlock();
 
@@ -346,6 +343,26 @@ public:
 			query_sync_timeout
 		);
 	}
+
+
+	inline td_api::object_ptr<td_api::messages> getChatHistory(
+				int64_t chat_id,
+				int64_t from_msg_id,
+				int32_t offset,
+				int32_t limit,
+				bool only_local = false)
+	{
+		return td_->send_query_sync<td_api::getChatHistory, td_api::messages>(
+			td_api::make_object<td_api::getChatHistory>(
+				chat_id,
+				from_msg_id,
+				offset,
+				limit,
+				only_local
+			),
+			query_sync_timeout
+		);
+	}
 };
 
 
@@ -390,6 +407,49 @@ static void wait_for_pool_assignment(uint32_t kwrk_id, KWorkerPool *kwrk_pool)
 }
 
 
+static void _scrape_chat_history(KWorker *kwrk,
+				 td_api::object_ptr<td_api::message> &msg)
+{
+	auto &content = msg->content_;
+
+	if (unlikely(!content))
+		return;
+
+	if (content->get_id() != td_api::messageText::ID)
+		return;
+
+	auto &text = static_cast<td_api::messageText &>(*content);
+	pr_notice("text = %s", text.text_->text_.c_str());
+}
+
+
+static void scrape_chat_history(KWorker *kwrk,
+				td_api::object_ptr<td_api::chat> &chat)
+{
+	int32_t i, count;
+
+	pr_notice("[tid=%d] Scraping %ld...", gettid(), chat->id_);
+
+	auto messages = kwrk->getChatHistory(chat->id_, 0, 0, 300);
+	if (unlikely(!messages)) {
+		pr_notice("[tid=%d] getChatHistory %ld is NULL", gettid(),
+			  chat->id_);
+		return;
+	}
+
+	count = messages->total_count_;
+	for (i = 0; i < count; i++) {
+		auto &msg = messages->messages_[i];
+		if (unlikely(!msg))
+			continue;
+
+		_scrape_chat_history(kwrk, msg);
+	}
+
+	pr_notice("[tid=%d] Scraping %ld finished", gettid(), chat->id_);
+}
+
+
 static void __run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
 			  KWorker *kwrk, struct task_work *tw)
 {
@@ -405,7 +465,7 @@ static void __run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
 	}
 
 	chatLock->lock();
-	pr_notice("[tid=%d] Scraping chat_id = %ld", gettid(), chat_id);
+	scrape_chat_history(kwrk, tw->chat);
 	chatLock->unlock();
 }
 
