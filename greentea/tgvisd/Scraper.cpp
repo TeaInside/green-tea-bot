@@ -118,7 +118,7 @@ private:
 		}
 
 		if (tasks_) {
-			delete[] tasks_;
+			free(tasks_);
 			tasks_ = nullptr;
 		}
 	}
@@ -156,7 +156,9 @@ public:
 		if (unlikely(!dbPool_))
 			goto err_nomem;
 
-		tasks_ = new task_work_list[wrkNum_];
+		tasks_ = (struct task_work_list *)calloc(wrkNum_, sizeof(*tasks_));
+		if (unlikely(!tasks_))
+			goto err_nomem;
 
 		for (i = 0; i < wrkNum_; i++) {
 			threads_[i] = new std::thread(run_kworker, i, this);
@@ -185,11 +187,13 @@ public:
 			ftLock_.unlock();
 			return -EAGAIN;
 		}
+
 		kwrk_id = freeThreads_.top();
 		freeThreads_.pop();
-		tasks_[kwrk_id].is_used = true;
-		tasks_[kwrk_id].tw.chat = std::move(tw->chat);
 		ftLock_.unlock();
+
+		tasks_[kwrk_id].is_used = true;
+		tasks_[kwrk_id].tw = std::move(*tw);
 		ftCond_.notify_all();
 		return 0;
 	}
@@ -199,7 +203,6 @@ public:
 	{
 		ftLock_.lock();
 		tasks_[kwrk_id].is_used = false;
-		tasks_[kwrk_id].tw.chat.reset((td_api::chat *)0xdeadbeefdeadbeeful);
 		freeThreads_.push(kwrk_id);
 		ftLock_.unlock();
 
