@@ -62,11 +62,6 @@ __cold KWorker::KWorker(Main *main, uint32_t maxThPool, uint32_t maxDbPool,
 		tasks_[i].idx = i;
 		freeTask_.push(i);
 	}
-
-	return;
-enomem:
-	cleanUp();
-	throw std::bad_alloc();
 }
 
 
@@ -236,20 +231,22 @@ void KWorker::runThreadPool(struct thpool *pool)
 		pool->setInterruptible();
 		idle_c = 0;
 	}
+
+out:
+	thPoolLock_.lock();
+	if (pool->thread) {
+		pool->thread->detach();
+		delete pool->thread;
+		pool->thread = nullptr;
+	}
+	thPoolStk_.push(pool->idx);
+	thPoolLock_.unlock();
 	activeThPool_--;
 	return;
 
 idle_exit:
 	pr_notice("tgvkwrk-%u is exiting due to inactivity...", pool->idx);
-	pool->thread->detach();
-	delete pool->thread;
-	pool->thread = nullptr;
-
-	thPoolLock_.lock();
-	thPoolStk_.push(pool->idx);
-	thPoolLock_.unlock();
-
-	activeThPool_--;
+	goto out;
 }
 
 
