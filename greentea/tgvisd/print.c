@@ -5,10 +5,6 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
-#include <string.h>
-#include <stdarg.h>
-#include <tgvisd/print.h>
-
 #ifndef _GNU_SOURCE
 	#define _GNU_SOURCE
 #endif
@@ -24,6 +20,10 @@
 	#define pthread_mutex_unlock(MUTEX)
 	#define pthread_mutex_trylock(MUTEX)
 #endif
+
+#include <string.h>
+#include <stdarg.h>
+#include <tgvisd/print.h>
 
 
 uint8_t __notice_level = DEFAULT_NOTICE_LEVEL;
@@ -100,7 +100,7 @@ void __attribute__((format(printf, 1, 2))) __pr_debug(const char *fmt, ...)
 
 	va_start(vl, fmt);
 	pthread_mutex_lock(&print_lock);
-	printf("[%s] Debug: ", get_time(buf));
+	printf("[%s][T%d] Debug: ", get_time(buf), gettid());
 	vprintf(fmt, vl);
 	putchar('\n');
 	pthread_mutex_unlock(&print_lock);

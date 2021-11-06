@@ -74,6 +74,12 @@ struct task_work_list {
 };
 
 
+struct db_pool {
+	mysql::MySQL		*db;
+	uint16_t		idx;
+};
+
+
 class KWorkerPool
 {
 public:
@@ -81,11 +87,19 @@ public:
 	mutex			ftLock_;
 	condition_variable	ftCond_;
 	std::stack<uint16_t>	freeThreads_;
+	mutex			fdbLock_;
+	condition_variable	fdbCond_;
+	std::stack<uint16_t>	freeDbPool_;
 
 private:
 	std::thread		**threads_  = nullptr;
-	mysql::MySQL		**dbPool_   = nullptr;
+	struct db_pool		*dbPool_    = nullptr;
 	struct task_work_list	*tasks_     = nullptr;
+	const char		*sqlHost_   = nullptr;
+	const char		*sqlUser_   = nullptr;
+	const char		*sqlPass_   = nullptr;
+	const char		*sqlDBName_ = nullptr;
+	uint16_t		sqlPort_    = 0u;
 	uint16_t 		wrkNum_     = 0u;
 
 
@@ -107,10 +121,10 @@ private:
 
 
 		if (dbPool_) {
-			for (i = 0; i < wrkNum_; i++) {
-				if (dbPool_[i]) {
-					delete dbPool_[i];
-					dbPool_[i] = nullptr;
+			for (i = 0; i < (wrkNum_ * 2); i++) {
+				if (dbPool_[i].db) {
+					delete dbPool_[i].db;
+					dbPool_[i].db = nullptr;
 				}
 			}
 			free(dbPool_);
@@ -118,27 +132,61 @@ private:
 		}
 
 		if (tasks_) {
-			free(tasks_);
+			delete[] tasks_;
 			tasks_ = nullptr;
 		}
 	}
 
+
+	inline mysql::MySQL *initMySQL(void)
+	{
+		mysql::MySQL *ret;
+		ret = new mysql::MySQL(sqlHost_, sqlUser_, sqlPass_, sqlDBName_);
+		ret->setPort(sqlPort_);
+		return ret;
+	}
 
 public:
 	inline KWorkerPool(uint32_t wrkNum, KWorker *kworker):
 		kworker_(kworker),
 		wrkNum_(wrkNum)
 	{
+		const char *tmp;
+
+		if (unlikely(wrkNum_ == 0))
+			throw std::runtime_error("wrkNum_ cannot be zero!");
+
+		sqlHost_ = getenv("TGVISD_MYSQL_HOST");
+		if (unlikely(!sqlHost_))
+			throw std::runtime_error("Missing TGVISD_MYSQL_HOST env");
+
+		sqlUser_ = getenv("TGVISD_MYSQL_USER");
+		if (unlikely(!sqlUser_))
+			throw std::runtime_error("Missing TGVISD_MYSQL_USER env");
+
+		sqlPass_ = getenv("TGVISD_MYSQL_PASS");
+		if (unlikely(!sqlPass_))
+			throw std::runtime_error("Missing TGVISD_MYSQL_PASS env");
+
+		sqlDBName_ = getenv("TGVISD_MYSQL_DBNAME");
+		if (unlikely(!sqlDBName_))
+			throw std::runtime_error("Missing TGVISD_MYSQL_DBNAME env");
+
+		tmp = getenv("TGVISD_MYSQL_PORT");
+		if (unlikely(!tmp))
+			throw std::runtime_error("Missing TGVISD_MYSQL_PORT env");
+
+		sqlPort_ = (uint16_t)atoi(tmp);
 	}
 
 
-	inline KWorker *getKWorker(void)
+	inline KWorker *getKWorker(void) noexcept
 	{
 		return kworker_;
 	}
 
 
-	inline std::thread *getThread(uint16_t kwrk_id)
+	inline std::thread *getThread(uint16_t kwrk_id) noexcept
 	{
 		return threads_[kwrk_id];
 	}
@@ -152,17 +200,21 @@ public:
 		if (unlikely(!threads_))
 			goto err_nomem;
 
-		dbPool_ = (mysql::MySQL **)calloc(wrkNum_, sizeof(*dbPool_));
+		dbPool_ = (struct db_pool *)calloc(wrkNum_ * 2u, sizeof(*dbPool_));
 		if (unlikely(!dbPool_))
 			goto err_nomem;
 
-		tasks_ = (struct task_work_list *)calloc(wrkNum_, sizeof(*tasks_));
-		if (unlikely(!tasks_))
-			goto err_nomem;
+		tasks_ = new task_work_list[wrkNum_];
 
-		for (i = 0; i < wrkNum_; i++) {
+		for (i = 0; i < wrkNum_; i++)
 			threads_[i] = new std::thread(run_kworker, i, this);
+
+		for (i = wrkNum_; i--)
 			freeThreads_.push(i);
+
+		for (i = wrkNum_ * 2u; i--;) {
+			dbPool_[i].idx = i;
+			freeDbPool_.push(i);
 		}
 
 		return;
@@ -172,9 +224,37 @@ public:
 	}
 
 
-	inline struct task_work_list *getTW(uint16_t kwrk_id)
+	inline struct task_work_list *getTW(uint16_t kwrk_id) noexcept
 	{
 		return &tasks_[kwrk_id];
+	}
+
+
+	inline void putDBPool(struct db_pool *)
+	{
+	}
+
+
+	inline struct db_pool *getDBPool(void)
+	{
+		struct db_pool *ret;
+		uint16_t dbp_id;
+
+		fdbLock_.lock();
+		if (freeDbPool_.empty()) {
+			fdbLock_.unlock();
+			return nullptr;
+		}
+		dbp_id = freeDbPool_.top();
+		freeDbPool_.pop();
+		fdbLock_.unlock();
+
+		if (!dbPool_[dbp_id].db) {
+			ret = initMySQL();
+			dbPool_[dbp_id] = ret;
+		}
+
+		return &dbPool_[dbp_id];
 	}
 
 
@@ -406,13 +486,36 @@ void Scraper::run(void)
 }
 
 
+static void insertGroup(KWorker *kwrk, td_api::object_ptr<td_api::chat> &chat)
+{
+	static const char q[] =
+		"INSERT INTO `gt_groups` "
+		"("
+			"`tg_group_id`,"
+			"`username`,"
+			"`link`,"
+			"`name`,"
+			"`created_at`,"
+			"`updated_at`"
+		") VALUES (?, ?, ?, ?, ?, ?);";
+
+	KWorkerPool *kwrk_pool;
+
+	kwrk_pool = kwrk->getKWorkerPool();
+}
+
+
 uint64_t KWorker::touchGroup(td_api::object_ptr<td_api::chat> &chat)
 {
+
 	if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID) {
 		pr_err("Chat %ld (%s) is not a super group", chat->id_,
 		       chat->title_.c_str());
 		return 0;
 	}
+
+
+
 	return 0;
 }
 
@@ -455,16 +558,19 @@ static void _scrape_chat_history(KWorker *kwrk,
 }
 
 
-static void scrape_chat_history(KWorker *kwrk,
-				td_api::object_ptr<td_api::chat> &chat)
+static void scrape_group_chat(KWorker *kwrk,
+			      td_api::object_ptr<td_api::chat> &chat,
+			      mutex *chatLock)
 {
-	int32_t i, count;
+	uint64_t pk_gid; /* Primay key of the group (ID) from DB. */
+	int32_t count, i;
 
-	pr_debug("[tid=%d] Touching group %ld (%s)...", gettid(), chat->id_,
-		 chat->title_.c_str());
-
-	// kwrk->touchChat(chat);
-
+	pr_debug("Touching group %ld (%s)...", chat->id_, chat->title_.c_str());
+	pk_gid = kwrk->touchGroup(chat);
+	if (unlikely(pk_gid == 0)) {
+		pr_err("Cannot resolve the primary key of group %ld", chat->id_);
+		return;
+	}
 
 	auto messages = kwrk->getChatHistory(chat->id_, 0, 0, 300);
 	if (unlikely(!messages)) {
@@ -482,7 +588,21 @@ static void scrape_chat_history(KWorker *kwrk,
 		_scrape_chat_history(kwrk, msg);
 	}
 
-	pr_notice("[tid=%d] Scraping %ld finished", gettid(), chat->id_);
+}
+
+
+static void scrape_chat_history(KWorker *kwrk,
+				td_api::object_ptr<td_api::chat> &chat,
+				mutex *chatLock)
+{
+
+	switch (chat->type_->get_id()) {
+	case td_api::chatTypeSupergroup::ID:
+		scrape_group_chat(kwrk, chat, chatLock);
+		break;
+	default:
+		break;
+	}
 }
 
 
@@ -495,12 +615,11 @@ static void __run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool,
 	chat_id  = tw->chat->id_;
 	chatLock = kwrk->getChatLock(chat_id);
 	if (unlikely(!chatLock)) {
-		pr_err("[tid=%d] Cannot get lock for chat_id = %ld", gettid(),
-		       chat_id);
+		pr_err("Cannot get lock for chat_id = %ld", chat_id);
 		return;
 	}
 
-	scrape_chat_history(kwrk, tw->chat);
+	scrape_chat_history(kwrk, tw->chat, chatLock);
 }
 
 
@@ -537,7 +656,7 @@ static void run_kworker(uint32_t kwrk_id, KWorkerPool *kwrk_pool)
 
 
 static int __run_kworker_event_loop(KWorker *kwrk, KWorkerPool *kwrk_pool,
-				    td_api::object_ptr<td_api::chat> chat)
+				    td_api::object_ptr<td_api::chat> &chat)
 {
 	int ret;
 	bool dbg = false;
@@ -550,8 +669,7 @@ static int __run_kworker_event_loop(KWorker *kwrk, KWorkerPool *kwrk_pool,
 			return -EOWNERDEAD;
 
 		if (!dbg) {
-			pr_debug("scraper-master: Submitting %ld",
-				 tw.chat->id_);
+			pr_debug("scraper-master: Submitting %ld", tw.chat->id_);
 			dbg = true;
 		}
 
@@ -584,7 +702,7 @@ static void _run_kworker_event_loop(KWorker *kwrk, KWorkerPool *kwrk_pool)
 			continue;
 		if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID)
 			continue;
-		if (__run_kworker_event_loop(kwrk, kwrk_pool, std::move(chat)))
+		if (__run_kworker_event_loop(kwrk, kwrk_pool, chat))
 			break;
 	}
 }

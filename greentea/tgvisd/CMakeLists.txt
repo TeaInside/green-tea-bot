@@ -37,6 +37,7 @@ target_compile_options(tgvisdtd PRIVATE
 	-fno-omit-frame-pointer
 	-fstack-protector-strong
 	-fsanitize=address
+	-Wno-gnu-statement-expression
 )
 ##################################################################
 
@@ -61,8 +62,10 @@ set(
 	Main.hpp
 	print.c
 	print.h
-	Scraper.cpp
-	Scraper.hpp
+	# Scraper.cpp
+	# Scraper.hpp
+	KWorker.cpp
+	KWorker.hpp
 )
 
 add_executable(tgvisd ${TGVISD_SOURCE})
@@ -77,5 +80,6 @@ target_compile_options(tgvisd PRIVATE
 	-fno-omit-frame-pointer
 	-fstack-protector-strong
 	-fsanitize=address
+	-Wno-gnu-statement-expression
 )
 ##################################################################
