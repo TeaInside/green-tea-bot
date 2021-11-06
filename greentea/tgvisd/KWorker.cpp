@@ -34,6 +34,7 @@ using namespace std::chrono_literals;
 
 __cold KWorker::KWorker(Main *main, uint32_t maxThPool, uint32_t maxDbPool,
 			uint32_t maxNRTasks):
+	td_(main->getTd()),
 	main_(main),
 	maxThPool_(maxThPool),
 	activeThPool_(0)

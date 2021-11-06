@@ -98,6 +98,7 @@ class KWorker
 {
 private:
 	volatile bool		stop_          = false;
+	tgvisd::Td::Td		*td_           = nullptr;
 	Main			*main_         = nullptr;
 	struct thpool		*thPool_       = nullptr;
 	struct dbpool		*dbPool_       = nullptr;
@@ -139,11 +140,13 @@ public:
 		cleanUp();
 	}
 
+
 	KWorker(Main *main, uint32_t maxThPool = 16, uint32_t maxDbPool = 256,
 		uint32_t maxNRTasks = 4096);
 	int submitTaskWork(struct task_work *tw);
 	mysql::MySQL *getDbPool(void);
 	void putDbPool(mysql::MySQL *db);
+
 
 	template<class Rep, class Period>
 	inline void waitQueue(const duration<Rep, Period> &rel_time)
@@ -152,15 +155,18 @@ public:
 		taskPutCond_.wait_for(lk, rel_time);
 	}
 
+
 	inline bool shouldStop(void)
 	{
 		return unlikely(stop_ || main_->getStop());
 	}
 
+
 	inline void run(void)
 	{
 		runMasterKWorker();
 	}
+
 
 	inline void stop(void)
 	{
@@ -171,12 +177,69 @@ public:
 	}
 
 
+	inline Main *getMain(void)
+	{
+		return main_;
+	}
+
+
+	inline tgvisd::Td::Td *getTd(void)
+	{
+		return td_;
+	}
+
+
 	inline static void setMasterThreadName(std::thread *task)
 	{
 #if defined(__linux__)
 		pthread_t pt = task->native_handle();
 		pthread_setname_np(pt, "tgvkwrk-master");
 #endif
+	}
+
+
+	static constexpr uint32_t query_sync_timeout = 150;
+
+
+	inline td_api::object_ptr<td_api::chats> getChats(
+		td_api::object_ptr<td_api::ChatList> &&chatList, int32_t limit)
+	{
+		return td_->send_query_sync<td_api::getChats, td_api::chats>(
+			td_api::make_object<td_api::getChats>(
+				std::move(chatList),
+				limit
+			),
+			query_sync_timeout
+		);
+	}
+
+
+	inline td_api::object_ptr<td_api::chat> getChat(int64_t chat_id)
+	{
+		return td_->send_query_sync<td_api::getChat, td_api::chat>(
+			td_api::make_object<td_api::getChat>(chat_id),
+			query_sync_timeout
+		);
+	}
+
+
+	inline td_api::object_ptr<td_api::messages> getChatHistory(
+				int64_t chat_id,
+				int64_t from_msg_id,
+				int32_t offset,
+				int32_t limit,
+				bool only_local = false)
+	{
+		return td_->send_query_sync<td_api::getChatHistory, td_api::messages>(
+			td_api::make_object<td_api::getChatHistory>(
+				chat_id,
+				from_msg_id,
+				offset,
+				limit,
+				only_local
+			),
+			query_sync_timeout
+		);
 	}
 };
 
