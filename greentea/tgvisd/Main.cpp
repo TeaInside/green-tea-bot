@@ -63,9 +63,6 @@ __cold Main::~Main(void)
 
 __hot int Main::run(void)
 {
-	int ret;
-	uintptr_t i;
-	struct task_work tw;
 	constexpr int timeout = 1;
 
 	td_.loop(timeout);
