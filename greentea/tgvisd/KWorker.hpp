@@ -119,6 +119,9 @@ private:
 	std::stack<uint32_t>	freeTask_;
 	std::queue<uint32_t>	tasksQueue_;
 
+	std::mutex		joinQueueLock_;
+	std::queue<uint32_t>	joinQueue_;
+
 	const char		*sqlHost_   = nullptr;
 	const char		*sqlUser_   = nullptr;
 	const char		*sqlPass_   = nullptr;
@@ -128,6 +131,7 @@ private:
 
 	void cleanUp(void);
 	void runMasterKWorker(void);
+	void handleJoinQueue(void);
 	void runThreadPool(struct thpool *pool);
 	struct task_work *getTaskWork(void);
 	struct thpool *getThPool(void);

@@ -233,20 +233,43 @@ void KWorker::runThreadPool(struct thpool *pool)
 	}
 
 out:
-	thPoolLock_.lock();
-	if (pool->thread) {
-		pool->thread->detach();
-		delete pool->thread;
-		pool->thread = nullptr;
-	}
-	thPoolStk_.push(pool->idx);
-	thPoolLock_.unlock();
+	joinQueueLock_.lock();
+	joinQueue_.push(pool->idx);
+	joinQueueLock_.unlock();
+	masterCond_.notify_one();
+
 	activeThPool_--;
 	return;
 
 idle_exit:
 	pr_notice("tgvkwrk-%u is exiting due to inactivity...", pool->idx);
 	goto out;
+}
+
+
+void KWorker::handleJoinQueue(void)
+{
+	joinQueueLock_.lock();
+	while (!joinQueue_.empty()) {
+		uint32_t idx;
+
+		idx = joinQueue_.front();
+		joinQueue_.pop();
+		joinQueueLock_.unlock();
+
+		pr_notice("tgvkwrk-master: Joining tgvkwrk-%u...", idx);
+		thPool_[idx].stop = true;
+		thPool_[idx].thread->join();
+		delete thPool_[idx].thread;
+		thPool_[idx].thread = nullptr;
+
+		thPoolLock_.lock();
+		thPoolStk_.push(idx);
+		thPoolLock_.unlock();
+
+		joinQueueLock_.lock();
+	}
+	joinQueueLock_.unlock();
 }
 
 
@@ -262,6 +285,8 @@ void KWorker::runMasterKWorker(void)
 		lk.lock();
 		masterCond_.wait_for(lk, 10000ms);
 		lk.unlock();
+
+		handleJoinQueue();
 
 		act_thread    = activeThPool_.load();
 		num_of_queues = tasksQueue_.size();
