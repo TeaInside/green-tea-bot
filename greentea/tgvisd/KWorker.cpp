@@ -72,7 +72,7 @@ __hot int KWorker::submitTaskWork(struct task_work *tw)
 	uint32_t idx;
 
 	taskLock_.lock();
-	if (unlikely(freeTask_.empty())) {
+	if (unlikely(tasks_ == nullptr) || freeTask_.empty()) {
 		taskLock_.unlock();
 		return -EAGAIN;
 	}
@@ -113,7 +113,7 @@ mysql::MySQL *KWorker::getDbPool(void)
 	mysql::MySQL *ret;
 
 	dbPoolLock_.lock();
-	if (unlikely(dbPoolStk_.empty())) {
+	if (unlikely(dbPool_ == nullptr) || dbPoolStk_.empty()) {
 		dbPoolLock_.unlock();
 		return nullptr;
 	}
@@ -139,7 +139,7 @@ struct task_work *KWorker::getTaskWork(void)
 	struct task_work *ret;
 
 	taskLock_.lock();
-	if (tasksQueue_.empty()) {
+	if (unlikely(tasks_ == nullptr) || tasksQueue_.empty()) {
 		taskLock_.unlock();
 		return nullptr;
 	}
@@ -173,7 +173,7 @@ struct thpool *KWorker::getThPool(void)
 	struct thpool *ret;
 
 	thPoolLock_.lock();
-	if (thPoolStk_.empty()) {
+	if (unlikely(thPool_ == nullptr) || thPoolStk_.empty()) {
 		thPoolLock_.unlock();
 		return nullptr;
 	}
@@ -220,8 +220,10 @@ void KWorker::runThreadPool(struct thpool *pool)
 			goto idle_exit;
 		}
 
-		if (unlikely(!tw->func))
+		if (unlikely(!tw->func)) {
+			putTaskWork(tw);
 			continue;
+		}
 
 		data.tw   = tw;
 		data.kwrk = this;
@@ -257,14 +259,15 @@ void KWorker::handleJoinQueue(void)
 		joinQueue_.pop();
 		joinQueueLock_.unlock();
 
-		pr_notice("tgvkwrk-master: Joining tgvkwrk-%u...", idx);
-		thPool_[idx].stop = true;
-		thPool_[idx].thread->join();
-		delete thPool_[idx].thread;
-		thPool_[idx].thread = nullptr;
-
 		thPoolLock_.lock();
-		thPoolStk_.push(idx);
+		if (thPool_) {
+			pr_notice("tgvkwrk-master: Joining tgvkwrk-%u...", idx);
+			thPool_[idx].stop = true;
+			thPool_[idx].thread->join();
+			delete thPool_[idx].thread;
+			thPool_[idx].thread = nullptr;
+			thPoolStk_.push(idx);
+		}
 		thPoolLock_.unlock();
 
 		joinQueueLock_.lock();
@@ -342,12 +345,17 @@ __cold void KWorker::cleanUp(void)
 	uint32_t i;
 
 	if (thPool_) {
+		joinQueueLock_.lock();
+		thPoolLock_.lock();
 		for (i = 0; i < maxThPool_; i++) {
 			if (thPool_[i].thread)
 				thPool_[i].stop = true;
 		}
+		thPoolLock_.unlock();
+		joinQueueLock_.unlock();
 		taskCond_.notify_all();
 
+		thPoolLock_.lock();
 		for (i = 0; i < maxThPool_; i++) {
 			if (thPool_[i].thread) {
 				thPool_[i].thread->join();
@@ -357,6 +365,7 @@ __cold void KWorker::cleanUp(void)
 		}
 		delete[] thPool_;
 		thPool_ = nullptr;
+		thPoolLock_.unlock();
 	}
 
 
