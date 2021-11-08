@@ -11,3 +11,5 @@
 *.log
 *.lock
 /build/
+/accounts/
+/start.sh

@@ -18,12 +18,17 @@ namespace tgvisd {
 
 extern volatile bool stopEventLoop;
 
+
+class KWorker;
+
+
 class Main
 {
 private:
-	tgvisd::Td::Td td_;
-	volatile bool isReady_ = false;
-	std::thread *scraperThread_ = nullptr;
+	tgvisd::Td::Td	td_;
+	volatile bool	isReady_ = false;
+	std::thread	*kworkerThread_ = nullptr;
+	KWorker		*kworker_ = nullptr;
 
 public:
 	Main(uint32_t api_id, const char *api_hash, const char *data_path);

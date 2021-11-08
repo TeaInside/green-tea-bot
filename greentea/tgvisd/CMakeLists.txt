@@ -36,6 +36,8 @@ target_compile_options(tgvisdtd PRIVATE
 	-Wno-unused-parameter
 	-fno-omit-frame-pointer
 	-fstack-protector-strong
+	-fsanitize=address
+	-Wno-gnu-statement-expression
 )
 ##################################################################
 
@@ -52,19 +54,23 @@ target_compile_options(tgvisdtd PRIVATE
 
 set(
 	TGVISD_SOURCE
+	../mysql/MySQL.cpp
+	../mysql/MySQL.hpp
 	common.hpp
 	entry.cpp
 	Main.cpp
 	Main.hpp
 	print.c
 	print.h
-	Scraper.cpp
-	Scraper.hpp
+	# Scraper.cpp
+	# Scraper.hpp
+	KWorker.cpp
+	KWorker.hpp
 )
 
 add_executable(tgvisd ${TGVISD_SOURCE})
 set_property(TARGET tgvisd PROPERTY CXX_STANDARD 20)
-target_link_libraries(tgvisd PRIVATE tgvisdtd pthread)
+target_link_libraries(tgvisd PRIVATE asan tgvisdtd mysqlclient pthread)
 target_compile_options(tgvisd PRIVATE
 	-ggdb3
 	-Wall
@@ -73,5 +79,7 @@ target_compile_options(tgvisd PRIVATE
 	-Wno-unused-parameter
 	-fno-omit-frame-pointer
 	-fstack-protector-strong
+	-fsanitize=address
+	-Wno-gnu-statement-expression
 )
 ##################################################################

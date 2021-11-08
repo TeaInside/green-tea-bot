@@ -8,7 +8,7 @@
  */
 
 #include <tgvisd/Main.hpp>
-#include <tgvisd/Scraper.hpp>
+#include <tgvisd/KWorker.hpp>
 
 #if defined(__linux__)
 	#include <signal.h>
@@ -26,22 +26,31 @@ __cold Main::Main(uint32_t api_id, const char *api_hash, const char *data_path):
 {
 	set_interrupt_handler();
 
-	pr_notice("Spawning scraper thread...");
-	scraperThread_ = new std::thread([this]{
-		Scraper *st = new Scraper(this, this->scraperThread_);
-		st->run();
-		delete st;
+	kworker_ = new KWorker(this);
+
+	pr_notice("Spawning kworker thread...");
+	kworkerThread_ = new std::thread([this]{
+		this->kworker_->run();
 	});
+	KWorker::setMasterThreadName(kworkerThread_);
 }
 
 
 __cold Main::~Main(void)
 {
-	if (scraperThread_) {
-		pr_notice("Waiting for scraper thread to exit...");
-		scraperThread_->join();
-		delete scraperThread_;
+	td_.setCancelDelayedWork(true);
+
+	if (kworker_)
+		kworker_->stop();
+
+	if (kworkerThread_) {
+		pr_notice("Waiting for kworker thread(s) to exit...");
+		kworkerThread_->join();
+		delete kworkerThread_;
 	}
+
+	if (kworker_)
+		delete kworker_;
 
 	td_.close();
 
