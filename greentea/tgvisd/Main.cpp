@@ -9,6 +9,7 @@
 
 #include <tgvisd/Main.hpp>
 #include <tgvisd/KWorker.hpp>
+#include <tgvisd/Scraper.hpp>
 
 #if defined(__linux__)
 	#include <signal.h>
@@ -27,12 +28,19 @@ __cold Main::Main(uint32_t api_id, const char *api_hash, const char *data_path):
 	set_interrupt_handler();
 
 	kworker_ = new KWorker(this);
+	scraper_ = new Scraper(this);
 
 	pr_notice("Spawning kworker thread...");
 	kworkerThread_ = new std::thread([this]{
 		this->kworker_->run();
 	});
 	KWorker::setMasterThreadName(kworkerThread_);
+
+	pr_notice("Spawning scraper thread...");
+	scraperThread_ = new std::thread([this]{
+		this->scraper_->run();
+	});
+	Scraper::setThreadName(scraperThread_);
 }
 
 

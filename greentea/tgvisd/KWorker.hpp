@@ -23,6 +23,7 @@
 #include <cstring>
 #include <cassert>
 #include <cstdlib>
+#include <functional>
 #include <unordered_map>
 #include <mysql/MySQL.hpp>
 #include <tgvisd/Main.hpp>
@@ -88,8 +89,8 @@ struct tw_data {
 
 
 struct task_work {
-	void					(*func)(struct tw_data *) = nullptr;
-	void					*data = nullptr;
+	std::function<void(tw_data *data)>	func  = nullptr;
+	td_api::object_ptr<td_api::chat>	data;
 	uint32_t				idx;
 };
 

@@ -62,8 +62,8 @@ set(
 	Main.hpp
 	print.c
 	print.h
-	# Scraper.cpp
-	# Scraper.hpp
+	Scraper.cpp
+	Scraper.hpp
 	KWorker.cpp
 	KWorker.hpp
 )

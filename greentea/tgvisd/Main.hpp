@@ -18,6 +18,7 @@ namespace tgvisd {
 
 extern volatile bool stopEventLoop;
 
+class Scraper;
 
 class KWorker;
 
@@ -28,12 +29,20 @@ private:
 	tgvisd::Td::Td	td_;
 	volatile bool	isReady_ = false;
 	std::thread	*kworkerThread_ = nullptr;
+	std::thread	*scraperThread_ = nullptr;
 	KWorker		*kworker_ = nullptr;
+	Scraper		*scraper_ = nullptr;
 
 public:
 	Main(uint32_t api_id, const char *api_hash, const char *data_path);
 	~Main(void);
 	int run(void);
+
+
+	inline KWorker *getKWorker(void)
+	{
+		return kworker_;
+	}
 
 
 	inline void doStop(void)

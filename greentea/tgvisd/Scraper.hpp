@@ -20,16 +20,26 @@ namespace tgvisd {
 
 class Scraper {
 private:
-	Main *main_ = nullptr;
-	std::thread *threadPtr_ = nullptr;
-	volatile bool stopScraper_ = false;
+	Main		*main_ = nullptr;
+	KWorker		*kworker_ = nullptr;
+	volatile bool	stopScraper_ = false;
 
 	void scraperEventLoop(void);
+	void _run(void);
+	void visit_chat(td_api::object_ptr<td_api::chat> &chat);
+	void _visit_chat(struct tw_data *data,
+			 td_api::object_ptr<td_api::chat> &chat);
 
 public:
-	Scraper(Main *main, std::thread *threadPtr);
+	Scraper(Main *main);
 	~Scraper(void);
 	void run(void);
+
+
+	inline bool shouldStop(void)
+	{
+		return unlikely(main_->getStop() || stopScraper_);
+	}
 
 
 	inline bool getStop(void)
@@ -47,6 +57,15 @@ public:
 	inline Main *getMain(void)
 	{
 		return main_;
+	}
+
+
+	inline static void setThreadName(std::thread *task)
+	{
+#if defined(__linux__)
+		pthread_t pt = task->native_handle();
+		pthread_setname_np(pt, "tgv-scraper");
+#endif
 	}
 };
 

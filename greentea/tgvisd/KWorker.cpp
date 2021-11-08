@@ -78,7 +78,7 @@ __hot int KWorker::submitTaskWork(struct task_work *tw)
 	}
 	idx = freeTask_.top();
 	freeTask_.pop();
-	tasks_[idx] = *tw;
+	tasks_[idx] = std::move(*tw);
 	tasks_[idx].idx = idx;
 	tasksQueue_.push(idx);
 	taskLock_.unlock();
