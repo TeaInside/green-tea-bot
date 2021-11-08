@@ -8,7 +8,7 @@ function login() {
                 <link rel="icon" href="/greentea.ico" />
             </Head>
 
-            <main className="flex flex-col w-8/12 lg:w-6/12 xl:w-5/12 2xl:w-4/12 bg-white mx-auto px-12 py-12  space-y-5">
+            <main className="flex flex-col w-10/12 md:w-7/12 lg:w-6/12 xl:w-5/12 2xl:w-4/12 bg-white mx-auto px-12 py-12  space-y-5">
                 <img
                     className="w-[300px] mx-auto"
                     src="greentea.svg"
@@ -49,7 +49,7 @@ function login() {
                         />
                     </div>
                     <a
-                        className="bg-dark-green text-white text-[20px] px-3 py-4 rounded-lg text-center cursor-pointer"
+                        className="bg-dark-green text-white text-[20px] px-3 py-4 rounded-lg text-center cursor-pointer hover:bg-dark-green-1"
                         href="/"
                     >
                         Login

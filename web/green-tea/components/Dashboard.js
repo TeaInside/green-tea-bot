@@ -1,11 +1,7 @@
 function Dashboard() {
     return (
-        <div className="w-full">
-            <img
-                className="w-[450px] mx-auto mt-6 "
-                src="greentea.svg"
-                alt="Logo"
-            />
+        <div className="flex-grow text-center">
+            <img className="w-[450px] mx-auto" src="greentea.svg" alt="Logo" />
         </div>
     );
 }
