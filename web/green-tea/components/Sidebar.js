@@ -19,8 +19,8 @@ function Sidebar() {
     return (
         <div
             className={classNames(
-                "relative bg-dark-green w-[90px] px-4 py-5 h-screen top-0 left-0 transition-all duration-150 ease-in-out",
-                click ? "w-[275px]" : ""
+                "relative bg-dark-green  px-4 py-5 h-screen top-0 left-0 transition-all duration-150 ease-in-out",
+                click ? "w-[275px]" : "w-[90px]"
             )}
         >
             <div className="flex items-center h-[40px]">
@@ -44,7 +44,7 @@ function Sidebar() {
                 <ul className="whitespace-nowrap space-y-4 mt-10">
                     <Link href="/">
                         <li className="flex items-center cursor-pointer px-3 py-2 h-[50px] text-white hover:text-dark-green hover:bg-white hover:rounded-lg">
-                            <ViewGridIcon className="w-[30px]" />
+                            <ViewGridIcon className="w-[30px] h-[30px]" />
                             <a
                                 className={classNames(
                                     "text-[20px] ml-4",
@@ -57,7 +57,7 @@ function Sidebar() {
                     </Link>
 
                     <li className="flex items-center cursor-pointer px-3 py-2 h-[50px] text-white hover:text-dark-green hover:bg-white hover:rounded-lg ">
-                        <ChartPieIcon className="w-[30px]" />
+                        <ChartPieIcon className="w-[30px] h-[30px]" />
                         <a
                             className={classNames(
                                 "text-[20px] ml-4",
@@ -69,7 +69,7 @@ function Sidebar() {
                     </li>
                     <Link href="/chatlog">
                         <li className="flex items-center cursor-pointer px-3 py-2 h-[50px] text-white hover:text-dark-green hover:bg-white hover:rounded-lg ">
-                            <ChatAlt2Icon className="w-[30px]" />
+                            <ChatAlt2Icon className="w-[30px] h-[30px]" />
 
                             <a
                                 className={classNames(
@@ -102,7 +102,7 @@ function Sidebar() {
                     Admin
                 </p>
                 <div className="hover:bg-opacity-20 hover:bg-white hover:rounded-full p-2 ml-auto">
-                    <LogoutIcon className="w-[30px] text-white cursor-pointer" />
+                    <LogoutIcon className="w-[30px] h-[30px] text-white cursor-pointer" />
                 </div>
             </div>
         </div>

@@ -10,9 +10,9 @@ function GroupList() {
                     5
                 </span>
             </div>
-            <hr className="w-full border-gray-200 mt-4" />
+            <hr className="w-full border-gray-200 mt-5" />
 
-            <div className="relative my-4 rounded-lg">
+            <div className="relative my-2 rounded-lg">
                 <div className="absolute inset-y-0 flex items-center pl-3 pointer-events-none">
                     <SearchIcon className="h-5 w-5 text-gray-500" />
                 </div>
@@ -23,7 +23,7 @@ function GroupList() {
                 />
             </div>
 
-            <div className="space-y-4 flex flex-col overflow-y-auto h-[83%] whitespace-nowrap">
+            <div className="flex flex-col overflow-y-scroll h-[85%] whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-200">
                 <Group namaGroup="Group 1" lastMessage="Dwi: hahaha" />
                 <Group namaGroup="Group Ra Nggenah" lastMessage="Dwi: jancok" />
                 <Group namaGroup="Group Nggenah" lastMessage="Dwi: samlekom" />
