@@ -23,7 +23,7 @@ function GroupList() {
                 />
             </div>
 
-            <div className="flex flex-col overflow-y-auto h-[85%] whitespace-nowrap">
+            <div className="flex flex-col overflow-y-scroll h-[85%] whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-200">
                 <Group namaGroup="Group 1" lastMessage="Dwi: hahaha" />
                 <Group namaGroup="Group Ra Nggenah" lastMessage="Dwi: jancok" />
                 <Group namaGroup="Group Nggenah" lastMessage="Dwi: samlekom" />

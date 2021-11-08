@@ -28,7 +28,7 @@ function ChatBox() {
                         onClick={() => setOffcanvas(true)}
                     />
                 </div>
-                <div className="space-y-6 flex flex-col  overflow-y-auto h-[89%] whitespace-nowrap p-4">
+                <div className="space-y-6 flex flex-col  overflow-y-scroll h-[89%] whitespace-nowrap p-4 scrollbar-thin scrollbar-thumb-gray-400">
                     <Message />
                     <Message />
                     <Message />
