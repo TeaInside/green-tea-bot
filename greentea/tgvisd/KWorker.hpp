@@ -47,32 +47,8 @@ struct thpool {
 	std::thread				*thread = nullptr;
 	uint32_t				idx;
 
-	inline void setInterruptible(void)
-	{
-#if defined(__linux__)
-		pthread_t pt;
-		char buf[sizeof("tgvkwrk-xxxxxxxxx")];
-		if (unlikely(!this->thread))
-			return;
-		pt = this->thread->native_handle();
-		snprintf(buf, sizeof(buf), "tgvkwrk-%u", idx);
-		pthread_setname_np(pt, buf);
-#endif
-	}
-
-
-	inline void setUninterruptible(void)
-	{
-#if defined(__linux__)
-		pthread_t pt;
-		char buf[sizeof("tgvkwrk-D-xxxxxxxxx")];
-		if (unlikely(!this->thread))
-			return;
-		pt = this->thread->native_handle();
-		snprintf(buf, sizeof(buf), "tgvkwrk-D-%u", idx);
-		pthread_setname_np(pt, buf);
-#endif
-	}
+	void setInterruptible(void);
+	void setUninterruptible(void);
 };
 
 
@@ -83,8 +59,9 @@ struct dbpool {
 
 
 struct tw_data {
-	KWorker					*kwrk;
 	struct task_work			*tw;
+	KWorker					*kwrk;
+	struct thpool				*current;
 };
 
 
@@ -99,6 +76,7 @@ class KWorker
 {
 private:
 	volatile bool		stop_          = false;
+	volatile bool		dropChatLock_  = false;
 	tgvisd::Td::Td		*td_           = nullptr;
 	Main			*main_         = nullptr;
 	struct thpool		*thPool_       = nullptr;
@@ -123,12 +101,14 @@ private:
 	std::mutex		joinQueueLock_;
 	std::queue<uint32_t>	joinQueue_;
 
+	std::mutex					clmLock_;
+	std::unordered_map<int64_t, std::mutex *>	chatLockMap_;
+
 	const char		*sqlHost_   = nullptr;
 	const char		*sqlUser_   = nullptr;
 	const char		*sqlPass_   = nullptr;
 	const char		*sqlDBName_ = nullptr;
 	uint16_t		sqlPort_    = 0u;
-
 
 	void cleanUp(void);
 	void runMasterKWorker(void);
@@ -151,6 +131,7 @@ public:
 	int submitTaskWork(struct task_work *tw);
 	mysql::MySQL *getDbPool(void);
 	void putDbPool(mysql::MySQL *db);
+	std::mutex *getChatLock(int64_t tg_chat_id);
 
 
 	template<class Rep, class Period>

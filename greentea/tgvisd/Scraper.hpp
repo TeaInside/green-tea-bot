@@ -29,6 +29,7 @@ private:
 	void visit_chat(td_api::object_ptr<td_api::chat> &chat);
 	void _visit_chat(struct tw_data *data,
 			 td_api::object_ptr<td_api::chat> &chat);
+	void extract_msg_content(td_api::object_ptr<td_api::message> &msg);
 
 public:
 	Scraper(Main *main);

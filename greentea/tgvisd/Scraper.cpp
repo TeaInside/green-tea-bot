@@ -85,9 +85,10 @@ __hot void Scraper::visit_chat(td_api::object_ptr<td_api::chat> &chat)
 	int ret;
 	struct task_work tw;
 
-	tw.func = [this, &chat](struct tw_data *data){
-		_visit_chat(data, std::move(chat));
+	tw.func = [this](struct tw_data *data){
+		this->_visit_chat(data, data->tw->data);
 	};
+	tw.data = std::move(chat);
 
 	do {
 		if (shouldStop())
@@ -104,8 +105,59 @@ __hot void Scraper::visit_chat(td_api::object_ptr<td_api::chat> &chat)
 __hot void Scraper::_visit_chat(struct tw_data *data,
 				td_api::object_ptr<td_api::chat> &chat)
 {
-	printf("Scraping %ld...\n", chat->id_);
-	sleep(2);
+	int32_t count, i;
+	struct thpool *current = data->current;
+	std::mutex *chat_lock;
+
+	pr_notice("Scraping messages from (%ld) [%s]...", chat->id_,
+		  chat->title_.c_str());
+
+	chat_lock = kworker_->getChatLock(chat->id_);
+	if (unlikely(!chat_lock)) {
+		pr_notice("Could not get chat lock (%ld) [%s]", chat->id_,
+			  chat->title_.c_str());
+		return;
+	}
+
+	auto messages = kworker_->getChatHistory(chat->id_, 0, 0, 300);
+	if (unlikely(!messages)) {
+		pr_notice("Could not get message history from (%ld) [%s]",
+			  chat->id_, chat->title_.c_str());
+		return;
+	}
+
+	count = messages->total_count_;
+	current->setInterruptible();
+	for (i = 0; i < count; i++) {
+		if (shouldStop())
+			break;
+
+		auto &msg = messages->messages_[i];
+		if (unlikely(!msg))
+			continue;
+
+		current->setUninterruptible();
+		chat_lock->lock();
+		extract_msg_content(msg);
+		chat_lock->unlock();
+		current->setInterruptible();
+	}
+}
+
+
+void Scraper::extract_msg_content(td_api::object_ptr<td_api::message> &msg)
+{
+	auto &content = msg->content_;
+
+	if (unlikely(!content))
+		return;
+
+	if (content->get_id() != td_api::messageText::ID)
+		return;
+
+	auto &text = static_cast<td_api::messageText &>(*content);
+	pr_notice("text = %s", text.text_->text_.c_str());
+	sleep(3);
 }
 
 

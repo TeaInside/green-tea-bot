@@ -225,8 +225,9 @@ void KWorker::runThreadPool(struct thpool *pool)
 			continue;
 		}
 
-		data.tw   = tw;
+		data.tw = tw;
 		data.kwrk = this;
+		data.current = pool;
 		pool->setUninterruptible();
 		tw->func(&data);
 		putTaskWork(tw);
@@ -273,6 +274,26 @@ void KWorker::handleJoinQueue(void)
 		joinQueueLock_.lock();
 	}
 	joinQueueLock_.unlock();
+}
+
+
+std::mutex *KWorker::getChatLock(int64_t tg_chat_id)
+{
+	std::mutex *ret;
+
+	if (unlikely(dropChatLock_ || shouldStop()))
+		return nullptr;
+
+	clmLock_.lock();
+	const auto &it = chatLockMap_.find(tg_chat_id);
+	if (it == chatLockMap_.end()) {
+		ret = new std::mutex;
+		chatLockMap_.emplace(tg_chat_id, ret);
+	} else {
+		ret = it->second;
+	}
+	clmLock_.unlock();
+	return ret;
 }
 
 
@@ -344,6 +365,8 @@ __cold void KWorker::cleanUp(void)
 {
 	uint32_t i;
 
+	dropChatLock_ = true;
+
 	if (thPool_) {
 		joinQueueLock_.lock();
 		thPoolLock_.lock();
@@ -386,6 +409,45 @@ __cold void KWorker::cleanUp(void)
 		delete[] tasks_;
 		tasks_ = nullptr;
 	}
+
+	clmLock_.lock();
+	for (auto &i: chatLockMap_) {
+		std::mutex *mut;
+		mut = i.second;
+		mut->lock();
+		mut->unlock();
+		delete mut;
+		i.second = nullptr;
+	}
+	clmLock_.unlock();
+}
+
+
+void thpool::setInterruptible(void)
+{
+#if defined(__linux__)
+	pthread_t pt;
+	char buf[sizeof("tgvkwrk-xxxxxxxxx")];
+	if (unlikely(!this->thread))
+		return;
+	pt = this->thread->native_handle();
+	snprintf(buf, sizeof(buf), "tgvkwrk-%u", idx);
+	pthread_setname_np(pt, buf);
+#endif
+}
+
+
+void thpool::setUninterruptible(void)
+{
+#if defined(__linux__)
+	pthread_t pt;
+	char buf[sizeof("tgvkwrk-D-xxxxxxxxx")];
+	if (unlikely(!this->thread))
+		return;
+	pt = this->thread->native_handle();
+	snprintf(buf, sizeof(buf), "tgvkwrk-D-%u", idx);
+	pthread_setname_np(pt, buf);
+#endif
 }
 
 
