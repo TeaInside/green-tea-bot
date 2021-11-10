@@ -45,10 +45,9 @@ __hot void Scraper::run(void)
 		sleep(1);
 	}
 
-	while (!shouldStop()) {
-		_run();
+	_run();
+	while (!shouldStop())
 		sleep(1);
-	}
 }
 
 
@@ -58,7 +57,7 @@ __hot void Scraper::_run(void)
 	int64_t chat_id;
 
 	pr_notice("Getting chat list...");
-	auto chats = kworker_->getChats(nullptr, 300);
+	auto chats = kworker_->getChats(nullptr, 500);
 	if (unlikely(!chats))
 		return;
 
@@ -463,6 +462,8 @@ static uint64_t tgc_save_user(mysql::MySQL *db,
 
 	stmt->bind(2, MYSQL_TYPE_STRING, (void *)u->first_name_.c_str(),
 		   u->first_name_.size());
+	if (!u->first_name_.size())
+		b->is_null = &null_v;
 
 	b = stmt->bind(3, MYSQL_TYPE_STRING, (void *)u->last_name_.c_str(),
 		       u->last_name_.size());
