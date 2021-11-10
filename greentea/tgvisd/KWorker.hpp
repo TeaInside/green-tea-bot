@@ -232,6 +232,15 @@ public:
 			query_sync_timeout
 		);
 	}
+
+
+	inline td_api::object_ptr<td_api::user> getUser(int64_t user_id)
+	{
+		return td_->send_query_sync<td_api::getUser, td_api::user>(
+			td_api::make_object<td_api::getUser>(user_id),
+			query_sync_timeout
+		);
+	}
 };
 
 
