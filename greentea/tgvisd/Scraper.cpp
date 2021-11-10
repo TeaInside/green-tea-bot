@@ -148,6 +148,7 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 				 td_api::object_ptr<td_api::chat> *chat,
 				 std::mutex *chat_lock)
 {
+	uint64_t pk_gid, pk_uid;
 	td_api::object_ptr<td_api::chat> chat2 = nullptr;
 
 	if (!chat) {
@@ -170,7 +171,7 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	}
 
 
-	touch_chat(*chat, chat_lock);
+	pk_gid = touch_group_chat(*chat, chat_lock);
 
 	// auto &content = msg->content_;
 
@@ -187,7 +188,7 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 }
 
 
-static uint64_t touch_chat_get_pk_id(mysql::MySQL *db, int64_t tg_chat_id)
+static uint64_t tgc_get_pk_id(mysql::MySQL *db, int64_t tg_chat_id)
 {
 	uint64_t pk_id;
 	int qlen, tmp;
@@ -213,18 +214,19 @@ static uint64_t touch_chat_get_pk_id(mysql::MySQL *db, int64_t tg_chat_id)
 
 	row = res->fetchRow();
 	if (unlikely(!row)) {
-		delete res;
-		return 0;
+		pk_id = 0;
+		goto out;
 	}
 
 	pk_id = strtoull(row[0], NULL, 10);
+out:
 	delete res;
 	return pk_id;
 }
 
 
-static uint64_t touch_chat_save_chat(mysql::MySQL *db,
-				     td_api::object_ptr<td_api::chat> &chat)
+static uint64_t tgc_save_chat(mysql::MySQL *db,
+			      td_api::object_ptr<td_api::chat> &chat)
 {
 	int errret;
 	uint64_t pk_id;
@@ -297,8 +299,8 @@ out:
 }
 
 
-__hot uint64_t Scraper::touch_chat(td_api::object_ptr<td_api::chat> &chat,
-				   std::mutex *chat_lock)
+__hot uint64_t Scraper::touch_group_chat(td_api::object_ptr<td_api::chat> &chat,
+					 std::mutex *chat_lock)
 	__acquires(chat_lock)
 	__releases(chat_lock)
 {
@@ -306,6 +308,9 @@ __hot uint64_t Scraper::touch_chat(td_api::object_ptr<td_api::chat> &chat,
 	mysql::MySQL *db;
 
 	if (unlikely(!chat))
+		return 0;
+
+	if (unlikely(chat->type_->get_id() != td_api::chatTypeSupergroup::ID))
 		return 0;
 
 	if (unlikely(!chat_lock)) {
@@ -326,9 +331,9 @@ __hot uint64_t Scraper::touch_chat(td_api::object_ptr<td_api::chat> &chat,
 
 	pr_debug("Touching chat id %ld...", chat->id_);
 	chat_lock->lock();
-	ret = touch_chat_get_pk_id(db, chat->id_);
+	ret = tgc_get_pk_id(db, chat->id_);
 	if (ret == 0)
-		ret = touch_chat_save_chat(db, chat);
+		ret = tgc_save_chat(db, chat);
 	chat_lock->unlock();
 	kworker_->putDbPool(db);
 	return unlikely(ret == -1ULL) ? 0 : ret;

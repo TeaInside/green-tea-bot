@@ -38,8 +38,8 @@ public:
 	Scraper(Main *main);
 	~Scraper(void);
 	void run(void);
-	uint64_t touch_chat(td_api::object_ptr<td_api::chat> &chat,
-			    std::mutex *chat_lock = nullptr);
+	uint64_t touch_group_chat(td_api::object_ptr<td_api::chat> &chat,
+				  std::mutex *chat_lock = nullptr);
 
 
 	inline bool shouldStop(void)
