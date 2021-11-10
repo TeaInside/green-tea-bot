@@ -248,11 +248,8 @@ public:
 	MySQL(const char *host, const char *user, const char *passwd,
 	      const char *dbname);
 
-	inline void init(const char *host, const char *user, const char *passwd,
-			 const char *dbname)
-	{
-		MySQL(host, user, passwd, dbname);
-	}
+	void init(const char *host, const char *user, const char *passwd,
+		  const char *dbname);
 
 	bool connect(void) noexcept;
 	MySQLRes *storeResult(void) noexcept;

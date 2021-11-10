@@ -12,12 +12,19 @@ namespace mysql {
 
 
 MySQL::MySQL(const char *host, const char *user, const char *passwd,
-	     const char *dbname):
-	host_(host),
-	user_(user),
-	passwd_(passwd),
-	dbname_(dbname)
+	     const char *dbname)
 {
+	init(host, user, passwd, dbname);
+}
+
+
+void MySQL::init(const char *host, const char *user, const char *passwd,
+		 const char *dbname)
+{
+	host_ = host;
+	user_ = user;
+	passwd_ = passwd;
+	dbname_ = dbname;
 	conn_ = mysql_init(NULL);
 	if (unlikely(!conn_))
 		throw std::runtime_error("Cannot init mysql on mysql_init()");
