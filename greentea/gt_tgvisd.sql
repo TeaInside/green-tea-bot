@@ -37,7 +37,7 @@ CREATE TABLE `gt_users` (
   `is_verified` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `is_support` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `is_scam` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
-  `is_bot` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `type` enum('bot','deleted','user','unknown') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `created_at` datetime NOT NULL,
   `updated_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
@@ -45,7 +45,7 @@ CREATE TABLE `gt_users` (
   KEY `username` (`username`),
   KEY `first_name` (`first_name`),
   KEY `last_name` (`last_name`),
-  KEY `is_bot` (`is_bot`),
+  KEY `type` (`type`),
   KEY `created_at` (`created_at`),
   KEY `updated_at` (`updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
@@ -73,4 +73,4 @@ CREATE TABLE `gt_users_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
--- 2021-11-10 06:43:58
+-- 2021-11-10 08:03:44
