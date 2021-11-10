@@ -11,19 +11,30 @@
 #define TGVISD__TD__TD_HPP
 
 #ifndef likely
-#define likely(EXPR)	__builtin_expect((bool)(EXPR), 1)
+	#define likely(EXPR)	__builtin_expect((bool)(EXPR), 1)
 #endif
 
 #ifndef unlikely
-#define unlikely(EXPR)	__builtin_expect((bool)(EXPR), 0)
+	#define unlikely(EXPR)	__builtin_expect((bool)(EXPR), 0)
 #endif
 
 #ifndef __hot
-#define __hot		__attribute__((__hot__))
+	#define __hot		__attribute__((__hot__))
 #endif
 
 #ifndef __cold
-#define __cold		__attribute__((__cold__))
+	#define __cold		__attribute__((__cold__))
+#endif
+
+#ifndef _GNU_SOURCE
+	#define _GNU_SOURCE
+#endif
+
+#if defined(__linux__)
+	#include <unistd.h>
+	#include <sys/types.h>
+#else
+	#define gettid() -1
 #endif
 
 #include <td/telegram/Client.h>
@@ -31,9 +42,13 @@
 #include <td/telegram/td_api.hpp>
 
 #include <mutex>
+#include <chrono>
 #include <atomic>
 #include <functional>
 #include <unordered_map>
+#include <condition_variable>
+
+#include <tgvisd/print.h>
 
 #include "Callback.hpp"
 
@@ -47,7 +62,13 @@ using std::atomic;
 using std::string;
 using std::function;
 using std::unique_ptr;
+using std::unique_lock;
 using std::unordered_map;
+using std::condition_variable;
+using namespace std::chrono_literals;
+
+
+extern volatile bool cancel_delayed_work;
 
 
 class Td
@@ -76,6 +97,7 @@ private:
 	atomic<uint64_t> authentication_query_id_ = 0;
 
 	mutex on_auth_update_mutex;
+	mutex handlersMutex_;
 
 	bool closed_ = false;
 	bool need_restart_ = false;
@@ -96,7 +118,116 @@ public:
 
 	void loop(int timeout);
 	void close(void);
+
+	template <typename T, typename U>
+	td_api::object_ptr<U> send_query_sync(td_api::object_ptr<T> method,
+					      uint32_t timeout);
+
+	template <typename T, typename U>
+	td_api::object_ptr<U> send_query_sync(td_api::object_ptr<T> method,
+					      uint32_t timeout,
+					      td_api::object_ptr<td_api::error> *err);
+
+
+	inline void setCancelDelayedWork(bool cancel)
+	{
+		cancel_delayed_work = true;
+	}
+
+
+	inline bool getCancelDelayedWork(void)
+	{
+		return cancel_delayed_work;
+	}
 };
+
+
+template <typename U>
+static inline auto query_sync_callback(condition_variable *cond,
+				       volatile bool *finished,
+				       td_api::object_ptr<U> *ret,
+				       td_api::object_ptr<td_api::error> *err)
+{
+	return [=](td_api::object_ptr<td_api::Object> obj) {
+
+		if (obj->get_id() == td_api::error::ID) {
+			if (err) {
+				*err = td::move_tl_object_as<td_api::error>(obj);
+				pr_err("Got error on query_sync_callback");
+			}
+			goto out;
+		}
+
+		if (obj->get_id() != U::ID) {
+			pr_error("Invalid object returned on send_query_sync");
+			goto out;
+		}
+
+		*ret = td::move_tl_object_as<U>(obj);
+
+	out:
+		*finished = true;
+		cond->notify_one();
+	};
+}
+
+
+template <typename T, typename U>
+td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
+					  uint32_t timeout)
+{
+	return send_query_sync<T, U>(std::move(method), timeout, nullptr);
+}
+
+
+/*
+ * T for the method name.
+ * U for the return value.
+ */
+template <typename T, typename U>
+td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
+					  uint32_t timeout,
+					  td_api::object_ptr<td_api::error> *err)
+{
+	mutex mut;
+	condition_variable cond;
+	unique_lock<mutex> lock(mut, std::defer_lock);
+	td_api::object_ptr<U> ret;
+	volatile bool finished = false;
+
+	uint32_t secs = 0;
+	const uint32_t warnOnSecs = 120;
+
+	send_query(std::move(method), query_sync_callback<U>(&cond, &finished,
+							     &ret, err));
+
+	lock.lock();
+	while (!finished) {
+
+		if (unlikely(getCancelDelayedWork()))
+			break;
+
+		cond.wait_for(lock, 1000ms);
+
+		if (likely(finished))
+			break;
+
+		if (unlikely(++secs >= warnOnSecs))
+			pr_notice("[tid=%ld] Warning: send_query_sync() blocked "
+				  "for more than %u seconds", (long)gettid(),
+				  secs);
+
+		if (unlikely(timeout > 0 && secs >= timeout)) {
+			pr_notice("[tid=%ld] Warning: send_query_sync() reached "
+				  "timeout after %u seconds", (long)gettid(),
+				  secs);
+			break;
+		}
+	}
+
+	return ret;
+}
+
 
 } /* namespace tgvisd::Td */
 

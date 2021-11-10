@@ -45,6 +45,28 @@
 	#define __cold		__attribute__((__cold__))
 #endif
 
+#ifndef __always_inline
+	#define __always_inline	inline __attribute__((__always_inline__))
+#endif
+
+#ifndef offsetof
+	#define offsetof(TYPE, FIELD) ((size_t) &((TYPE *)0)->FIELD)
+#endif
+
+#ifndef container_of
+	#define container_of(PTR, TYPE, FIELD) ({			\
+		__typeof__(((TYPE *)0)->FIELD) *__FIELD_PTR = (PTR);	\
+		(TYPE *)((char *) __FIELD_PTR - offsetof(TYPE, FIELD));	\
+	})
+#endif
+
+
+
+static __always_inline void cpu_relax(void)
+{
+	__asm__ volatile("pause");
+}
+
 #include <tgvisd/print.h>
 
 #endif /* #ifndef TGVISD__COMMON_HPP */

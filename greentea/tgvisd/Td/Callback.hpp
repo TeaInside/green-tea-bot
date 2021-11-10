@@ -31,7 +31,7 @@ public:
 	inline void execute(td_api::updateNewChat &update)
 	{
 		if (updateNewChat)
-		   updateNewChat(update);
+			updateNewChat(update);
 	}
 
 	std::function<void(td_api::updateChatTitle &update)>
