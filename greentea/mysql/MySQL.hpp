@@ -190,6 +190,12 @@ public:
 	}
 
 
+	inline uint64_t getInsertId(void)
+	{
+		return mysql_stmt_insert_id(stmt_);
+	}
+
+
 	inline const char *getError(void) noexcept
 	{
 		return mysql_stmt_error(stmt_);
