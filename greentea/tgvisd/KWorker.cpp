@@ -305,6 +305,28 @@ std::mutex *KWorker::getChatLock(int64_t tg_chat_id)
 }
 
 
+std::mutex *KWorker::getUserLock(int64_t tg_user_id)
+	__acquires(&ulmLock_)
+	__releases(&ulmLock_)
+{
+	std::mutex *ret;
+
+	if (unlikely(dropChatLock_ || shouldStop()))
+		return nullptr;
+
+	ulmLock_.lock();
+	const auto &it = userLockMap_.find(tg_user_id);
+	if (it == userLockMap_.end()) {
+		ret = new std::mutex;
+		userLockMap_.emplace(tg_user_id, ret);
+	} else {
+		ret = it->second;
+	}
+	ulmLock_.unlock();
+	return ret;
+}
+
+
 void KWorker::runMasterKWorker(void)
 	__acquires(&taskLock_)
 	__releases(&taskLock_)
@@ -374,6 +396,7 @@ __cold void KWorker::cleanUp(void)
 	uint32_t i;
 
 	dropChatLock_ = true;
+	dropUserLock_ = true;
 
 	if (thPool_) {
 		joinQueueLock_.lock();
@@ -428,6 +451,17 @@ __cold void KWorker::cleanUp(void)
 		i.second = nullptr;
 	}
 	clmLock_.unlock();
+
+	ulmLock_.lock();
+	for (auto &i: userLockMap_) {
+		std::mutex *mut;
+		mut = i.second;
+		mut->lock();
+		mut->unlock();
+		delete mut;
+		i.second = nullptr;
+	}
+	ulmLock_.unlock();
 }
 
 

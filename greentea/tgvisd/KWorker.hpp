@@ -77,6 +77,7 @@ class KWorker
 private:
 	volatile bool		stop_          = false;
 	volatile bool		dropChatLock_  = false;
+	volatile bool		dropUserLock_  = false;
 	tgvisd::Td::Td		*td_           = nullptr;
 	Main			*main_         = nullptr;
 	struct thpool		*thPool_       = nullptr;
@@ -103,6 +104,9 @@ private:
 
 	std::mutex					clmLock_;
 	std::unordered_map<int64_t, std::mutex *>	chatLockMap_;
+
+	std::mutex					ulmLock_;
+	std::unordered_map<int64_t, std::mutex *>	userLockMap_;
 
 	const char		*sqlHost_   = nullptr;
 	const char		*sqlUser_   = nullptr;
@@ -132,6 +136,7 @@ public:
 	mysql::MySQL *getDbPool(void);
 	void putDbPool(mysql::MySQL *db);
 	std::mutex *getChatLock(int64_t tg_chat_id);
+	std::mutex *getUserLock(int64_t tg_user_id);
 
 
 	template<class Rep, class Period>
