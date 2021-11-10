@@ -38,6 +38,13 @@ public:
 	Scraper(Main *main);
 	~Scraper(void);
 	void run(void);
+
+	uint64_t touch_user_with_uid(int64_t tg_user_id,
+				     std::mutex *user_lock = nullptr);
+
+	uint64_t touch_user(td_api::object_ptr<td_api::user> &user,
+			    std::mutex *user_lock = nullptr);
+
 	uint64_t touch_group_chat(td_api::object_ptr<td_api::chat> &chat,
 				  std::mutex *chat_lock = nullptr);
 

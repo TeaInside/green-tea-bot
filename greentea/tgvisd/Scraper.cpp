@@ -171,7 +171,34 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	}
 
 
+	if (unlikely(!msg->sender_)) {
+		pr_notice("save_message(): Ignoring message, as it does not "
+			  "have a sender (%ld) [%s]", (*chat)->id_,
+			  (*chat)->title_.c_str());
+		return;
+	}
+
+
 	pk_gid = touch_group_chat(*chat, chat_lock);
+	if (unlikely(pk_gid == 0)) {
+		pr_err("save_message(): Ignoring message, could not get pk_gid "
+		       "(%ld) [%s]", (*chat)->id_, (*chat)->title_.c_str());
+		return;
+	}
+
+
+	if (unlikely(msg->sender_->get_id() != td_api::messageSenderUser::ID)) {
+		pr_notice("save_message(): Ignoring message, as it is not sent "
+			  "by messageSenderUser object (%ld) [%s]",
+			  (*chat)->id_, (*chat)->title_.c_str());
+		return;
+	}
+
+	auto sender = td::move_tl_object_as<td_api::messageSenderUser>(msg->sender_);
+
+	pk_uid = touch_user_with_uid(sender->user_id_);
+
+	pr_notice("pk_uid: %llu; pk_gid: %llu", pk_uid, pk_gid);
 
 	// auto &content = msg->content_;
 
@@ -335,6 +362,211 @@ __hot uint64_t Scraper::touch_group_chat(td_api::object_ptr<td_api::chat> &chat,
 	if (ret == 0)
 		ret = tgc_save_chat(db, chat);
 	chat_lock->unlock();
+	kworker_->putDbPool(db);
+	return unlikely(ret == -1ULL) ? 0 : ret;
+}
+
+
+uint64_t Scraper::touch_user_with_uid(int64_t tg_user_id, std::mutex *user_lock)
+{
+	auto user = kworker_->getUser(tg_user_id);
+	if (unlikely(!user))
+		return 0;
+
+	return touch_user(user, user_lock);
+}
+
+
+static uint64_t tu_get_pk_id(mysql::MySQL *db, int64_t tg_user_id)
+{
+	uint64_t pk_id;
+	int qlen, tmp;
+	MYSQL_ROW row;
+	char qbuf[128];
+	mysql::MySQLRes *res;
+
+	qlen = snprintf(qbuf, sizeof(qbuf),
+			"SELECT id FROM gt_users WHERE tg_user_id = %" PRId64,
+			tg_user_id);
+
+	tmp = db->realQuery(qbuf, (size_t)qlen);
+	if (unlikely(tmp)) {
+		pr_err("query(): %s", db->getError());
+		return -1ULL;
+	}
+
+	res = db->storeResult();
+	if (MYSQL_IS_ERR_OR_NULL(res)) {
+		pr_err("storeResult(): %s", db->getError());
+		return -1ULL;
+	}
+
+	row = res->fetchRow();
+	if (unlikely(!row)) {
+		pk_id = 0;
+		goto out;
+	}
+
+	pk_id = strtoull(row[0], NULL, 10);
+out:
+	delete res;
+	return pk_id;
+}
+
+
+static uint64_t tgc_save_user(mysql::MySQL *db,
+			      td_api::object_ptr<td_api::user> &u)
+{
+	int errret;
+	MYSQL_BIND *b;
+	uint64_t pk_id;
+	const char *errstr = nullptr;
+	size_t userTypeLen = 0;
+	const char *userType = nullptr;
+	const char *stmtErrFunc = nullptr;
+	mysql::MySQLStmt *stmt = nullptr;
+	bool null_v = true;
+
+	stmt = db->prepare(9,
+		"INSERT INTO `gt_users` "
+		"("
+			"`tg_user_id`,"
+			"`username`,"
+			"`first_name`,"
+			"`last_name`,"
+			"`phone`,"
+			"`is_verified`,"
+			"`is_support`,"
+			"`is_scam`,"
+			"`type`,"
+			"`created_at`"
+		")"
+			" VALUES "
+		"(?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());"
+	);
+
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt))
+		goto prepare_err;
+
+	if (unlikely(stmt->stmtInit())) {
+		stmtErrFunc = "stmtInit";
+		goto stmt_err;
+	}
+
+	stmt->bind(0, MYSQL_TYPE_LONGLONG, &u->id_, sizeof(u->id_));
+
+	b = stmt->bind(1, MYSQL_TYPE_STRING, (void *)u->username_.c_str(),
+		       u->username_.size());
+
+	if (!u->username_.size())
+		b->is_null = &null_v;
+
+	stmt->bind(2, MYSQL_TYPE_STRING, (void *)u->first_name_.c_str(),
+		   u->first_name_.size());
+
+	b = stmt->bind(3, MYSQL_TYPE_STRING, (void *)u->last_name_.c_str(),
+		       u->last_name_.size());
+	if (!u->last_name_.size())
+		b->is_null = &null_v;
+
+	b = stmt->bind(4, MYSQL_TYPE_STRING, (void *)u->phone_number_.c_str(),
+		       u->phone_number_.size());
+	if (!u->phone_number_.size())
+		b->is_null = &null_v;
+
+	stmt->bind(5, MYSQL_TYPE_STRING, (void *)(u->is_verified_ ? "1" : "0"), 1);
+	stmt->bind(6, MYSQL_TYPE_STRING, (void *)(u->is_support_ ? "1" : "0"), 1);
+	stmt->bind(7, MYSQL_TYPE_STRING, (void *)(u->is_scam_ ? "1" : "0"), 1);
+
+	switch (u->type_->get_id()) {
+	case td_api::userTypeBot::ID:
+		userType = "bot";
+		userTypeLen = 3;
+		break;
+	case td_api::userTypeDeleted::ID:
+		userType = "deleted";
+		userTypeLen = 7;
+		break;
+	case td_api::userTypeRegular::ID:
+		userType = "user";
+		userTypeLen = 4;
+		break;
+	case td_api::userTypeUnknown::ID:
+	default:
+		userType = "unknown";
+		userTypeLen = 7;
+		break;
+	}
+	stmt->bind(8, MYSQL_TYPE_STRING, (void *)userType, userTypeLen);
+
+	if (unlikely(stmt->bindStmt())) {
+		stmtErrFunc = "bindStmt";
+		goto stmt_err;
+	}
+
+	if (unlikely(stmt->execute())) {
+		stmtErrFunc = "execute";
+		goto stmt_err;
+	}
+
+	pk_id = stmt->getInsertId();
+	goto out;
+
+prepare_err:
+	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
+		errret = MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
+		errstr = strerror(errret);
+	} else {
+		errstr = db->getError();
+		errret = db->getErrno();
+	}
+
+	stmt = nullptr;
+	pr_err("prepare(): (%d) %s", errret, errstr);
+	return -1ULL;
+
+
+stmt_err:
+	errstr = stmt->getError();
+	errret = stmt->getErrno();
+	pr_err("%s(): (%d) %s", stmtErrFunc, errret, errstr);
+	pk_id = -1ULL;
+out:
+	delete stmt;
+	return pk_id;
+}
+
+
+uint64_t Scraper::touch_user(td_api::object_ptr<td_api::user> &user,
+			     std::mutex *user_lock)
+{
+	uint64_t ret = 0;
+	mysql::MySQL *db;
+
+	if (unlikely(!user))
+		return 0;
+
+	if (!user_lock) {
+		user_lock = kworker_->getUserLock(user->id_);
+		if (unlikely(!user_lock)) {
+			pr_err("touch_user(): Could not get user lock %ld",
+			       user->id_);
+			return 0;
+		}
+	}
+
+	db = kworker_->getDbPool();
+	if (unlikely(!db)) {
+		pr_err("touch_user(): Could not get DB pool");
+		return 0;
+	}
+
+	pr_debug("Touching user id %ld...", user->id_);
+	user_lock->lock();
+	ret = tu_get_pk_id(db, user->id_);
+	if (ret == 0)
+		ret = tgc_save_user(db, user);
+	user_lock->unlock();
 	kworker_->putDbPool(db);
 	return unlikely(ret == -1ULL) ? 0 : ret;
 }
