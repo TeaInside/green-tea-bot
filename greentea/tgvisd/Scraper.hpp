@@ -29,12 +29,17 @@ private:
 	void visit_chat(td_api::object_ptr<td_api::chat> &chat);
 	void _visit_chat(struct tw_data *data,
 			 td_api::object_ptr<td_api::chat> &chat);
-	void extract_msg_content(td_api::object_ptr<td_api::message> &msg);
+
+	void save_message(td_api::object_ptr<td_api::message> &msg,
+			  td_api::object_ptr<td_api::chat> *chat = nullptr,
+			  std::mutex *chat_lock = nullptr);
 
 public:
 	Scraper(Main *main);
 	~Scraper(void);
 	void run(void);
+	uint64_t touch_chat(td_api::object_ptr<td_api::chat> &chat,
+			    std::mutex *chat_lock = nullptr);
 
 
 	inline bool shouldStop(void)
