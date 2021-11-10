@@ -168,6 +168,8 @@ void KWorker::putTaskWork(struct task_work *tw)
 
 
 struct thpool *KWorker::getThPool(void)
+	__acquires(&thPoolLock_)
+	__releases(&thPoolLock_)
 {
 	uint32_t idx;
 	struct thpool *ret;
@@ -198,6 +200,8 @@ struct thpool *KWorker::getThPool(void)
 void KWorker::runThreadPool(struct thpool *pool)
 	__acquires(&taskLock_)
 	__releases(&taskLock_)
+	__acquires(&joinQueueLock_)
+	__releases(&joinQueueLock_)
 {
 	uint32_t idle_c = 0;
 	struct task_work *tw;
@@ -251,6 +255,8 @@ idle_exit:
 
 
 void KWorker::handleJoinQueue(void)
+	__acquires(&joinQueueLock_)
+	__releases(&joinQueueLock_)
 {
 	joinQueueLock_.lock();
 	while (!joinQueue_.empty()) {
@@ -278,6 +284,8 @@ void KWorker::handleJoinQueue(void)
 
 
 std::mutex *KWorker::getChatLock(int64_t tg_chat_id)
+	__acquires(&clmLock_)
+	__releases(&clmLock_)
 {
 	std::mutex *ret;
 
