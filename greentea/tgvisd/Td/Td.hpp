@@ -235,14 +235,12 @@ td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
 			break;
 
 		if (unlikely(++secs >= warnOnSecs))
-			pr_notice("[tid=%ld] Warning: send_query_sync() blocked "
-				  "for more than %u seconds", (long)gettid(),
-				  secs);
+			pr_notice("Warning: send_query_sync() blocked "
+				  "for more than %u seconds", secs);
 
 		if (unlikely(timeout > 0 && secs >= timeout)) {
-			pr_notice("[tid=%ld] Warning: send_query_sync() reached "
-				  "timeout after %u seconds", (long)gettid(),
-				  secs);
+			pr_notice("Warning: send_query_sync() reached "
+				  "timeout after %u seconds", secs);
 			break;
 		}
 	}
