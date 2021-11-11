@@ -36,8 +36,8 @@ __cold Td::Td(uint32_t api_id, const char *api_hash, const char *data_path):
 }
 
 
-__hot void Td::send_query(td_api::object_ptr<td_api::Function> f,
-			  function<void(Object)> handler)
+__hot uint64_t Td::send_query(td_api::object_ptr<td_api::Function> f,
+			      function<void(Object)> handler)
 {
 	uint64_t query_id;
 
@@ -49,6 +49,7 @@ __hot void Td::send_query(td_api::object_ptr<td_api::Function> f,
 	}
 
 	client_manager_->send(client_id_, query_id, std::move(f));
+	return query_id;
 }
 
 
