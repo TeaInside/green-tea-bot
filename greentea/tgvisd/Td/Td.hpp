@@ -234,14 +234,16 @@ td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
 		if (likely(data->finished))
 			break;
 
-		if (unlikely(++secs >= warnOnSecs))
-			pr_notice("Warning: send_query_sync() blocked "
-				  "for more than %u seconds", secs);
-
-		if (unlikely(timeout > 0 && secs >= timeout)) {
-			pr_notice("Warning: send_query_sync() reached "
-				  "timeout after %u seconds", secs);
-			break;
+		if (timeout > 0) {
+			if (unlikely(secs >= timeout)) {
+				pr_notice("Warning: send_query_sync() reached "
+					  "timeout after %u seconds", secs);
+				break;
+			}
+		} else {
+			if (unlikely(++secs >= warnOnSecs))
+				pr_notice("Warning: send_query_sync() blocked "
+					  "for more than %u seconds", secs);
 		}
 	}
 	ret = std::move(data->ret);
