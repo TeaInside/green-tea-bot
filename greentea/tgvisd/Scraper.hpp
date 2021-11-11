@@ -36,7 +36,7 @@ private:
 
 public:
 	Scraper(Main *main);
-	~Scraper(void);
+	~Scraper(void) = default;
 	void run(void);
 
 	uint64_t touch_user_with_uid(int64_t tg_user_id,

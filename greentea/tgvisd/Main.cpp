@@ -60,6 +60,15 @@ __cold Main::~Main(void)
 	if (kworker_)
 		delete kworker_;
 
+	if (scraper_) {
+		pr_notice("Waiting for scraper thread(s) to exit...");
+		scraperThread_->join();
+		delete scraperThread_;
+	}
+
+	if (scraper_)
+		delete scraper_;
+
 	td_.close();
 
 #if defined(__linux__)
