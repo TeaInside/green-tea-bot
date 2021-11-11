@@ -14,6 +14,7 @@
 
 int main(void)
 {
+	int ret;
 	const char *api_id, *api_hash, *data_path;
 
 	api_id = getenv("TGVISD_API_ID");
@@ -34,6 +35,12 @@ int main(void)
 		return 1;
 	}
 
-	tgvisd::Main mm((uint32_t)atoi(api_id), api_hash, data_path);
-	return mm.run();
+	try {
+		tgvisd::Main mm((uint32_t)atoi(api_id), api_hash, data_path);
+		ret = mm.run();
+	} catch (const std::runtime_exception &e) {
+		printf("Err: %s\n", e.what());
+		throw e;
+	}
+	return ret;
 }
