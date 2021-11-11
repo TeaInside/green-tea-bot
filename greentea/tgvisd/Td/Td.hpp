@@ -238,6 +238,7 @@ td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
 			if (unlikely(secs >= timeout)) {
 				pr_notice("Warning: send_query_sync() reached "
 					  "timeout after %u seconds", secs);
+				data->cleaner = QSD_CLEAN_FROM_CALLBACK;
 				break;
 			}
 		} else {
