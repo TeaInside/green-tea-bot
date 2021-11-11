@@ -45,9 +45,25 @@ __hot void Scraper::run(void)
 		sleep(1);
 	}
 
-	_run();
-	while (!shouldStop())
-		sleep(1);
+	while (1) {
+		uint32_t i;
+
+		for (i = 0; i < 30; i++) {
+			if (shouldStop())
+				return;
+			_run();
+			sleep(1);
+		}
+
+
+		for (i = 0; i < 60; i++) {
+			if (shouldStop())
+				return;
+			if (i % 10 == 0)
+				_run();
+			sleep(1);
+		}
+	}
 }
 
 
