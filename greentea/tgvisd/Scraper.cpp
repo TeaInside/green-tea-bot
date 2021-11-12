@@ -210,10 +210,14 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	}
 
 	auto sender = td::move_tl_object_as<td_api::messageSenderUser>(msg->sender_);
-
 	pk_uid = touch_user_with_uid(sender->user_id_);
+	if (unlikely(pk_uid == 0)) {
+		pr_err("save_message(): Ignoring message, could not get pk_uid "
+		       "(%ld) [%s]", (*chat)->id_, (*chat)->title_.c_str());
+		return;
+	}
 
-	pr_notice("pk_uid: %llu; pk_gid: %llu", pk_uid, pk_gid);
+	pr_notice("pk_uid: %lu; pk_gid: %lu", pk_uid, pk_gid);
 
 	// auto &content = msg->content_;
 
