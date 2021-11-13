@@ -163,7 +163,7 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 				 td_api::object_ptr<td_api::chat> *chat,
 				 std::mutex *chat_lock)
 {
-	uint64_t pk_gid, pk_uid;
+	uint64_t pk_gid, pk_uid, pk_mid;
 	td_api::object_ptr<td_api::chat> chat2 = nullptr;
 
 	if (!chat) {
@@ -219,18 +219,161 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 
 	pr_notice("pk_uid: %lu; pk_gid: %lu", pk_uid, pk_gid);
 
-	// auto &content = msg->content_;
-
-	// if (unlikely(!content))
-	// 	return;
-
-	// if (content->get_id() != td_api::messageText::ID)
-	// 	return;
+	chat_lock->lock();
+	_save_msg(msg, pk_gid, pk_uid);
+	chat_lock->unlock();
 
 	// auto &text = static_cast<td_api::messageText &>(*content);
 	// pr_notice("text = %s", text.text_->text_.c_str());
 	// chat_lock->unlock();
 	// sleep(3);
+}
+
+
+#define ZSTRL(STR) STR, sizeof(STR) - 1
+
+
+static uint64_t __save_msg(mysql::MySQL *db,
+			   td_api::object_ptr<td_api::message> &msg,
+			   uint64_t pk_gid, uint64_t pk_uid)
+{
+	int errret;
+	uint64_t pk_mid;
+	const char *errstr = nullptr;
+	const char *stmtErrFunc = nullptr;
+	mysql::MySQLStmt *stmt = nullptr;
+	int64_t tg_msg_id, reply_to_tg_msg_id;
+
+
+	stmt = db->prepare(8,
+		"INSERT INTO `gt_group_messages` "
+		"("
+			"`group_id`,"
+			"`user_id`,"
+			"`tg_msg_id`,"
+			"`reply_to_tg_msg_id`,"
+			"`msg_type`,"
+			"`has_edited_msg`,"
+			"`is_forwarded_msg`,"
+			"`is_deleted`,"
+			"`desc`,"
+			"`created_at`,"
+			"`updated_at`"
+		") VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NULL);"
+	);
+
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt))
+		goto prepare_err;
+
+	if (unlikely(stmt->stmtInit())) {
+		stmtErrFunc = "stmtInit";
+		goto stmt_err;
+	}
+
+	tg_msg_id = msg->id_ >> 20u;
+	reply_to_tg_msg_id = msg->reply_to_message_id_ >> 20u;
+
+	stmt->bind(0, MYSQL_TYPE_LONGLONG, &pk_gid, sizeof(int64_t));
+	stmt->bind(1, MYSQL_TYPE_LONGLONG, &pk_uid, sizeof(int64_t));
+	stmt->bind(2, MYSQL_TYPE_LONGLONG, &tg_msg_id, sizeof(int64_t));
+
+	if (reply_to_tg_msg_id)
+		stmt->bind(3, MYSQL_TYPE_LONGLONG, &reply_to_tg_msg_id,
+			   sizeof(int64_t));
+	else
+		stmt->bind(3, MYSQL_TYPE_NULL, nullptr, 0);
+
+	stmt->bind(4, MYSQL_TYPE_STRING, (void *)"text", 4);
+	stmt->bind(5, MYSQL_TYPE_STRING, (void *)"0", 1);
+	stmt->bind(6, MYSQL_TYPE_STRING, (void *)"0", 1);
+	stmt->bind(7, MYSQL_TYPE_STRING, (void *)"0", 1);
+
+	if (unlikely(stmt->bindStmt())) {
+		stmtErrFunc = "bindStmt";
+		goto stmt_err;
+	}
+
+	if (unlikely(stmt->execute())) {
+		stmtErrFunc = "execute";
+		goto stmt_err;
+	}
+
+	pk_mid = stmt->getInsertId();
+	goto out;
+
+prepare_err:
+	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
+		errret = MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
+		errstr = strerror(errret);
+	} else {
+		errstr = db->getError();
+		errret = db->getErrno();
+	}
+
+	stmt = nullptr;
+	pr_err("prepare(): (%d) %s", errret, errstr);
+	return -1ULL;
+
+
+stmt_err:
+	errstr = stmt->getError();
+	errret = stmt->getErrno();
+	pr_err("%s(): (%d) %s", stmtErrFunc, errret, errstr);
+	pk_mid = -1ULL;
+out:
+	delete stmt;
+	return pk_mid;
+}
+
+
+void Scraper::_save_msg(td_api::object_ptr<td_api::message> &msg,
+			uint64_t pk_gid, uint64_t pk_uid)
+{
+	int tmp;
+	uint64_t pk_mid;
+	mysql::MySQL *db;
+
+	auto &content = msg->content_;
+
+	if (unlikely(!content))
+		return;
+
+	db = kworker_->getDbPool();
+	if (unlikely(!db)) {
+		pr_err("_save_msg(): Could not get DB pool");
+		return;
+	}
+
+	tmp = db->realQuery(ZSTRL("START TRANSACTION"));
+	if (unlikely(tmp)) {
+		pr_err("realQuery(\"START TRANSACTION\"): %s", db->getError());
+		goto out_put;
+	}
+
+	pk_mid = __save_msg(db, msg, pk_gid, pk_uid);
+	if (unlikely(pk_mid == 0 || pk_mid == -1ULL))
+		goto rollback;
+
+	switch (content->get_id()) {
+	case td_api::messageText::ID:
+		break;
+	}
+
+	tmp = db->realQuery(ZSTRL("COMMIT"));
+	if (unlikely(tmp)) {
+		pr_err("realQuery(\"COMMIT\"): %s", db->getError());
+		goto rollback;
+	}
+
+	goto out_put;
+
+rollback:
+	tmp = db->realQuery(ZSTRL("ROLLBACK"));
+	if (unlikely(tmp))
+		pr_err("realQuery(\"ROLLBACK\"): %s", db->getError());
+
+out_put:
+	kworker_->putDbPool(db);
 }
 
 
@@ -476,7 +619,6 @@ static uint64_t tgc_save_user(mysql::MySQL *db,
 
 	b = stmt->bind(1, MYSQL_TYPE_STRING, (void *)u->username_.c_str(),
 		       u->username_.size());
-
 	if (!u->username_.size())
 		b->is_null = &null_v;
 

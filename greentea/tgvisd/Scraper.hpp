@@ -34,6 +34,9 @@ private:
 			  td_api::object_ptr<td_api::chat> *chat = nullptr,
 			  std::mutex *chat_lock = nullptr);
 
+	void _save_msg(td_api::object_ptr<td_api::message> &msg,
+		       uint64_t pk_gid, uint64_t pk_uid);
+
 public:
 	Scraper(Main *main);
 	~Scraper(void) = default;
