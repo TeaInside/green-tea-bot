@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <stdexcept>
 #include <tgvisd/Main.hpp>
 
 
@@ -38,7 +39,7 @@ int main(void)
 	try {
 		tgvisd::Main mm((uint32_t)atoi(api_id), api_hash, data_path);
 		ret = mm.run();
-	} catch (const std::runtime_exception &e) {
+	} catch (const std::runtime_error &e) {
 		printf("Err: %s\n", e.what());
 		throw e;
 	}
