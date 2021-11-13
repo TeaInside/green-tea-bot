@@ -120,7 +120,7 @@ __panic(const char *file, int lineno, const char *fmt, ...)
 	vprintf(fmt, vl);
 	va_end(vl);
 	putchar('\n');
-	printf("Panic at %s:%d\n", file, lineno);
+	printf("[T%d][P%d] Panic at %s:%d\n", gettid(), getpid(), file, lineno);
 	#define dump_stack()
 	/* TODO: Write real dump_stack() */
 	dump_stack();
