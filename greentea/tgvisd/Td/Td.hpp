@@ -112,6 +112,7 @@ private:
 
 public:
 	Td(uint32_t api_id, const char *api_hash, const char *data_path);
+	~Td(void);
 
 	uint64_t send_query(td_api::object_ptr<td_api::Function> f,
 			    function<void(Object)> handler);
@@ -151,6 +152,7 @@ struct query_sync_data {
 	std::unique_lock<std::mutex>		lock;
 	td_api::object_ptr<U>			ret;
 	td_api::object_ptr<td_api::error>	*err;
+	Td					*td;
 	volatile bool				finished = false;
 	volatile uint8_t			cleaner  = QSD_CLEAN_FROM_SQS;
 
@@ -167,11 +169,15 @@ static inline auto query_sync_callback(query_sync_data<U> *data)
 	return [=](td_api::object_ptr<td_api::Object> obj) {
 
 		data->mutex.lock();
-		if (unlikely(data->cleaner == QSD_CLEAN_FROM_CALLBACK)) {
+		if (unlikely(data->cleaner == QSD_CLEAN_FROM_CALLBACK ||
+			     data->td->getCancelDelayedWork())) {
 			data->mutex.unlock();
 			delete data;
 			return;
 		}
+
+		if (unlikely(!obj))
+			goto out;
 
 		if (obj->get_id() == td_api::error::ID) {
 			if (data->err) {
@@ -221,6 +227,7 @@ td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
 
 	send_query(std::move(method), query_sync_callback<U>(data));
 
+	data->td = this;
 	data->lock.lock();
 	while (!data->finished) {
 
