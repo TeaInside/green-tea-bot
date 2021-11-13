@@ -190,6 +190,12 @@ public:
 	}
 
 
+	inline uint64_t getInsertId(void)
+	{
+		return mysql_stmt_insert_id(stmt_);
+	}
+
+
 	inline const char *getError(void) noexcept
 	{
 		return mysql_stmt_error(stmt_);
@@ -248,11 +254,8 @@ public:
 	MySQL(const char *host, const char *user, const char *passwd,
 	      const char *dbname);
 
-	inline void init(const char *host, const char *user, const char *passwd,
-			 const char *dbname)
-	{
-		MySQL(host, user, passwd, dbname);
-	}
+	void init(const char *host, const char *user, const char *passwd,
+		  const char *dbname);
 
 	bool connect(void) noexcept;
 	MySQLRes *storeResult(void) noexcept;

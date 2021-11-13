@@ -72,13 +72,13 @@ __hot int KWorker::submitTaskWork(struct task_work *tw)
 	uint32_t idx;
 
 	taskLock_.lock();
-	if (unlikely(freeTask_.empty())) {
+	if (unlikely(tasks_ == nullptr) || freeTask_.empty()) {
 		taskLock_.unlock();
 		return -EAGAIN;
 	}
 	idx = freeTask_.top();
 	freeTask_.pop();
-	tasks_[idx] = *tw;
+	tasks_[idx] = std::move(*tw);
 	tasks_[idx].idx = idx;
 	tasksQueue_.push(idx);
 	taskLock_.unlock();
@@ -113,7 +113,7 @@ mysql::MySQL *KWorker::getDbPool(void)
 	mysql::MySQL *ret;
 
 	dbPoolLock_.lock();
-	if (unlikely(dbPoolStk_.empty())) {
+	if (unlikely(dbPool_ == nullptr) || dbPoolStk_.empty()) {
 		dbPoolLock_.unlock();
 		return nullptr;
 	}
@@ -139,7 +139,7 @@ struct task_work *KWorker::getTaskWork(void)
 	struct task_work *ret;
 
 	taskLock_.lock();
-	if (tasksQueue_.empty()) {
+	if (unlikely(tasks_ == nullptr) || tasksQueue_.empty()) {
 		taskLock_.unlock();
 		return nullptr;
 	}
@@ -168,12 +168,14 @@ void KWorker::putTaskWork(struct task_work *tw)
 
 
 struct thpool *KWorker::getThPool(void)
+	__acquires(&thPoolLock_)
+	__releases(&thPoolLock_)
 {
 	uint32_t idx;
 	struct thpool *ret;
 
 	thPoolLock_.lock();
-	if (thPoolStk_.empty()) {
+	if (unlikely(thPool_ == nullptr) || thPoolStk_.empty()) {
 		thPoolLock_.unlock();
 		return nullptr;
 	}
@@ -198,6 +200,8 @@ struct thpool *KWorker::getThPool(void)
 void KWorker::runThreadPool(struct thpool *pool)
 	__acquires(&taskLock_)
 	__releases(&taskLock_)
+	__acquires(&joinQueueLock_)
+	__releases(&joinQueueLock_)
 {
 	uint32_t idle_c = 0;
 	struct task_work *tw;
@@ -220,11 +224,14 @@ void KWorker::runThreadPool(struct thpool *pool)
 			goto idle_exit;
 		}
 
-		if (unlikely(!tw->func))
+		if (unlikely(!tw->func)) {
+			putTaskWork(tw);
 			continue;
+		}
 
-		data.tw   = tw;
+		data.tw = tw;
 		data.kwrk = this;
+		data.current = pool;
 		pool->setUninterruptible();
 		tw->func(&data);
 		putTaskWork(tw);
@@ -248,6 +255,8 @@ idle_exit:
 
 
 void KWorker::handleJoinQueue(void)
+	__acquires(&joinQueueLock_)
+	__releases(&joinQueueLock_)
 {
 	joinQueueLock_.lock();
 	while (!joinQueue_.empty()) {
@@ -257,19 +266,64 @@ void KWorker::handleJoinQueue(void)
 		joinQueue_.pop();
 		joinQueueLock_.unlock();
 
-		pr_notice("tgvkwrk-master: Joining tgvkwrk-%u...", idx);
-		thPool_[idx].stop = true;
-		thPool_[idx].thread->join();
-		delete thPool_[idx].thread;
-		thPool_[idx].thread = nullptr;
-
 		thPoolLock_.lock();
-		thPoolStk_.push(idx);
+		if (thPool_) {
+			pr_notice("tgvkwrk-master: Joining tgvkwrk-%u...", idx);
+			thPool_[idx].stop = true;
+			thPool_[idx].thread->join();
+			delete thPool_[idx].thread;
+			thPool_[idx].thread = nullptr;
+			thPoolStk_.push(idx);
+		}
 		thPoolLock_.unlock();
 
 		joinQueueLock_.lock();
 	}
 	joinQueueLock_.unlock();
+}
+
+
+std::mutex *KWorker::getChatLock(int64_t tg_chat_id)
+	__acquires(&clmLock_)
+	__releases(&clmLock_)
+{
+	std::mutex *ret;
+
+	if (unlikely(dropChatLock_ || shouldStop()))
+		return nullptr;
+
+	clmLock_.lock();
+	const auto &it = chatLockMap_.find(tg_chat_id);
+	if (it == chatLockMap_.end()) {
+		ret = new std::mutex;
+		chatLockMap_.emplace(tg_chat_id, ret);
+	} else {
+		ret = it->second;
+	}
+	clmLock_.unlock();
+	return ret;
+}
+
+
+std::mutex *KWorker::getUserLock(int64_t tg_user_id)
+	__acquires(&ulmLock_)
+	__releases(&ulmLock_)
+{
+	std::mutex *ret;
+
+	if (unlikely(dropChatLock_ || shouldStop()))
+		return nullptr;
+
+	ulmLock_.lock();
+	const auto &it = userLockMap_.find(tg_user_id);
+	if (it == userLockMap_.end()) {
+		ret = new std::mutex;
+		userLockMap_.emplace(tg_user_id, ret);
+	} else {
+		ret = it->second;
+	}
+	ulmLock_.unlock();
+	return ret;
 }
 
 
@@ -341,13 +395,21 @@ __cold void KWorker::cleanUp(void)
 {
 	uint32_t i;
 
+	dropChatLock_ = true;
+	dropUserLock_ = true;
+
 	if (thPool_) {
+		joinQueueLock_.lock();
+		thPoolLock_.lock();
 		for (i = 0; i < maxThPool_; i++) {
 			if (thPool_[i].thread)
 				thPool_[i].stop = true;
 		}
+		thPoolLock_.unlock();
+		joinQueueLock_.unlock();
 		taskCond_.notify_all();
 
+		thPoolLock_.lock();
 		for (i = 0; i < maxThPool_; i++) {
 			if (thPool_[i].thread) {
 				thPool_[i].thread->join();
@@ -357,6 +419,7 @@ __cold void KWorker::cleanUp(void)
 		}
 		delete[] thPool_;
 		thPool_ = nullptr;
+		thPoolLock_.unlock();
 	}
 
 
@@ -377,6 +440,56 @@ __cold void KWorker::cleanUp(void)
 		delete[] tasks_;
 		tasks_ = nullptr;
 	}
+
+	clmLock_.lock();
+	for (auto &i: chatLockMap_) {
+		std::mutex *mut;
+		mut = i.second;
+		mut->lock();
+		mut->unlock();
+		delete mut;
+		i.second = nullptr;
+	}
+	clmLock_.unlock();
+
+	ulmLock_.lock();
+	for (auto &i: userLockMap_) {
+		std::mutex *mut;
+		mut = i.second;
+		mut->lock();
+		mut->unlock();
+		delete mut;
+		i.second = nullptr;
+	}
+	ulmLock_.unlock();
+}
+
+
+void thpool::setInterruptible(void)
+{
+#if defined(__linux__)
+	pthread_t pt;
+	char buf[sizeof("tgvkwrk-xxxxxxxxx")];
+	if (unlikely(!this->thread))
+		return;
+	pt = this->thread->native_handle();
+	snprintf(buf, sizeof(buf), "tgvkwrk-%u", idx);
+	pthread_setname_np(pt, buf);
+#endif
+}
+
+
+void thpool::setUninterruptible(void)
+{
+#if defined(__linux__)
+	pthread_t pt;
+	char buf[sizeof("tgvkwrk-D-xxxxxxxxx")];
+	if (unlikely(!this->thread))
+		return;
+	pt = this->thread->native_handle();
+	snprintf(buf, sizeof(buf), "tgvkwrk-D-%u", idx);
+	pthread_setname_np(pt, buf);
+#endif
 }
 
 

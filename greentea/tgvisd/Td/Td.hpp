@@ -112,9 +112,10 @@ private:
 
 public:
 	Td(uint32_t api_id, const char *api_hash, const char *data_path);
+	~Td(void);
 
-	void send_query(td_api::object_ptr<td_api::Function> f,
-			function<void(Object)> handler);
+	uint64_t send_query(td_api::object_ptr<td_api::Function> f,
+			    function<void(Object)> handler);
 
 	void loop(int timeout);
 	void close(void);
@@ -142,17 +143,45 @@ public:
 };
 
 
+#define QSD_CLEAN_FROM_SQS	(0u)
+#define QSD_CLEAN_FROM_CALLBACK	(1u)
 template <typename U>
-static inline auto query_sync_callback(condition_variable *cond,
-				       volatile bool *finished,
-				       td_api::object_ptr<U> *ret,
-				       td_api::object_ptr<td_api::error> *err)
+struct query_sync_data {
+	condition_variable			cond;
+	std::mutex				mutex;
+	std::unique_lock<std::mutex>		lock;
+	td_api::object_ptr<U>			ret;
+	td_api::object_ptr<td_api::error>	*err;
+	Td					*td;
+	volatile bool				finished = false;
+	volatile uint8_t			cleaner  = QSD_CLEAN_FROM_SQS;
+
+	query_sync_data(void):
+		lock(this->mutex, std::defer_lock)
+	{
+	}
+};
+
+
+template <typename U>
+static inline auto query_sync_callback(query_sync_data<U> *data)
 {
 	return [=](td_api::object_ptr<td_api::Object> obj) {
 
+		data->mutex.lock();
+		if (unlikely(data->cleaner == QSD_CLEAN_FROM_CALLBACK ||
+			     data->td->getCancelDelayedWork())) {
+			data->mutex.unlock();
+			delete data;
+			return;
+		}
+
+		if (unlikely(!obj))
+			goto out;
+
 		if (obj->get_id() == td_api::error::ID) {
-			if (err) {
-				*err = td::move_tl_object_as<td_api::error>(obj);
+			if (data->err) {
+				*data->err = td::move_tl_object_as<td_api::error>(obj);
 				pr_err("Got error on query_sync_callback");
 			}
 			goto out;
@@ -163,11 +192,11 @@ static inline auto query_sync_callback(condition_variable *cond,
 			goto out;
 		}
 
-		*ret = td::move_tl_object_as<U>(obj);
-
 	out:
-		*finished = true;
-		cond->notify_one();
+		data->ret = td::move_tl_object_as<U>(obj);
+		data->finished = true;
+		data->cond.notify_one();
+		data->mutex.unlock();
 	};
 }
 
@@ -189,41 +218,47 @@ td_api::object_ptr<U> Td::send_query_sync(td_api::object_ptr<T> method,
 					  uint32_t timeout,
 					  td_api::object_ptr<td_api::error> *err)
 {
-	mutex mut;
-	condition_variable cond;
-	unique_lock<mutex> lock(mut, std::defer_lock);
 	td_api::object_ptr<U> ret;
-	volatile bool finished = false;
+	query_sync_data<U> *data = new query_sync_data<U>();
+	data->err = err;
 
 	uint32_t secs = 0;
 	const uint32_t warnOnSecs = 120;
 
-	send_query(std::move(method), query_sync_callback<U>(&cond, &finished,
-							     &ret, err));
+	send_query(std::move(method), query_sync_callback<U>(data));
 
-	lock.lock();
-	while (!finished) {
+	data->td = this;
+	data->lock.lock();
+	while (!data->finished) {
 
-		if (unlikely(getCancelDelayedWork()))
-			break;
-
-		cond.wait_for(lock, 1000ms);
-
-		if (likely(finished))
-			break;
-
-		if (unlikely(++secs >= warnOnSecs))
-			pr_notice("[tid=%ld] Warning: send_query_sync() blocked "
-				  "for more than %u seconds", (long)gettid(),
-				  secs);
-
-		if (unlikely(timeout > 0 && secs >= timeout)) {
-			pr_notice("[tid=%ld] Warning: send_query_sync() reached "
-				  "timeout after %u seconds", (long)gettid(),
-				  secs);
+		if (unlikely(getCancelDelayedWork())) {
+			data->cleaner = QSD_CLEAN_FROM_CALLBACK;
 			break;
 		}
+
+		data->cond.wait_for(data->lock, 1000ms);
+
+		if (likely(data->finished))
+			break;
+
+		if (timeout > 0) {
+			if (unlikely(secs >= timeout)) {
+				pr_notice("Warning: send_query_sync() reached "
+					  "timeout after %u seconds", secs);
+				data->cleaner = QSD_CLEAN_FROM_CALLBACK;
+				break;
+			}
+		} else {
+			if (unlikely(++secs >= warnOnSecs))
+				pr_notice("Warning: send_query_sync() blocked "
+					  "for more than %u seconds", secs);
+		}
 	}
+	ret = std::move(data->ret);
+	data->lock.unlock();
+
+	if (likely(data->cleaner == QSD_CLEAN_FROM_SQS))
+		delete data;
 
 	return ret;
 }

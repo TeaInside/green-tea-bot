@@ -10,6 +10,7 @@
 *.tmp
 *.log
 *.lock
+*.patch
 /build/
 /accounts/
 /start.sh
