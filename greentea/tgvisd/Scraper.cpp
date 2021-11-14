@@ -30,7 +30,7 @@
 namespace tgvisd {
 
 
-Scraper::Scraper(Main *main):
+__cold Scraper::Scraper(Main *main):
 	main_(main),
 	kworker_(main->getKWorker())
 {
@@ -233,9 +233,9 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 #define ZSTRL(STR) STR, sizeof(STR) - 1
 
 
-static uint64_t __save_msg(mysql::MySQL *db,
-			   td_api::object_ptr<td_api::message> &msg,
-			   uint64_t pk_gid, uint64_t pk_uid)
+__hot static uint64_t __save_msg(mysql::MySQL *db,
+				 td_api::object_ptr<td_api::message> &msg,
+				 uint64_t pk_gid, uint64_t pk_uid)
 {
 	int errret;
 	uint64_t pk_mid;
@@ -326,8 +326,8 @@ out:
 }
 
 
-void Scraper::_save_msg(td_api::object_ptr<td_api::message> &msg,
-			uint64_t pk_gid, uint64_t pk_uid)
+__hot void Scraper::_save_msg(td_api::object_ptr<td_api::message> &msg,
+			      uint64_t pk_gid, uint64_t pk_uid)
 {
 	int tmp;
 	uint64_t pk_mid;
@@ -377,7 +377,7 @@ out_put:
 }
 
 
-static uint64_t tgc_get_pk_id(mysql::MySQL *db, int64_t tg_chat_id)
+__hot static uint64_t tgc_get_pk_id(mysql::MySQL *db, int64_t tg_chat_id)
 {
 	uint64_t pk_id;
 	int qlen, tmp;
@@ -414,8 +414,8 @@ out:
 }
 
 
-static uint64_t tgc_save_chat(mysql::MySQL *db,
-			      td_api::object_ptr<td_api::chat> &chat)
+__hot static uint64_t tgc_save_chat(mysql::MySQL *db,
+				    td_api::object_ptr<td_api::chat> &chat)
 {
 	int errret;
 	uint64_t pk_id;
@@ -539,7 +539,7 @@ uint64_t Scraper::touch_user_with_uid(int64_t tg_user_id, std::mutex *user_lock)
 }
 
 
-static uint64_t tu_get_pk_id(mysql::MySQL *db, int64_t tg_user_id)
+__hot static uint64_t tu_get_pk_id(mysql::MySQL *db, int64_t tg_user_id)
 {
 	uint64_t pk_id;
 	int qlen, tmp;
@@ -576,8 +576,8 @@ out:
 }
 
 
-static uint64_t tgc_save_user(mysql::MySQL *db,
-			      td_api::object_ptr<td_api::user> &u)
+__hot static uint64_t tgc_save_user(mysql::MySQL *db,
+				    td_api::object_ptr<td_api::user> &u)
 {
 	int errret;
 	MYSQL_BIND *b;
@@ -700,8 +700,8 @@ out:
 }
 
 
-uint64_t Scraper::touch_user(td_api::object_ptr<td_api::user> &user,
-			     std::mutex *user_lock)
+__hot uint64_t Scraper::touch_user(td_api::object_ptr<td_api::user> &user,
+				   std::mutex *user_lock)
 {
 	uint64_t ret = 0;
 	mysql::MySQL *db;
