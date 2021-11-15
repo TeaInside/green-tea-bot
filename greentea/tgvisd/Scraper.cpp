@@ -96,15 +96,34 @@ __hot void Scraper::_run(void)
 }
 
 
+struct scraper_payload {
+	td_api::object_ptr<td_api::chat>	chat;
+};
+
+
+static void scraper_payload_deleter(void *p)
+{
+	delete (struct scraper_payload *)p;
+}
+
+
 __hot void Scraper::visit_chat(td_api::object_ptr<td_api::chat> &chat)
 {
 	int ret;
 	struct task_work tw;
+	struct scraper_payload *payload;
+
+	payload = new struct scraper_payload;
+	payload->chat = std::move(chat);
 
 	tw.func = [this](struct tw_data *data){
-		this->_visit_chat(data, data->tw->data);
+		struct scraper_payload *payload;
+
+		payload = (struct scraper_payload *)data->tw->payload;
+		this->_visit_chat(data, payload->chat);
 	};
-	tw.data = std::move(chat);
+	tw.payload = (void *)payload;
+	tw.deleter = scraper_payload_deleter;
 
 	do {
 		if (shouldStop())

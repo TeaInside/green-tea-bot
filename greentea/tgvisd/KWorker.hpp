@@ -66,8 +66,9 @@ struct tw_data {
 
 
 struct task_work {
-	std::function<void(tw_data *data)>	func  = nullptr;
-	td_api::object_ptr<td_api::chat>	data;
+	std::function<void(tw_data *data)>	func    = nullptr;
+	std::function<void(void *payload)>	deleter = nullptr;
+	void					*payload;
 	uint32_t				idx;
 };
 
@@ -85,6 +86,7 @@ private:
 	std::thread		*masterTh_     = nullptr;
 	struct task_work	*tasks_        = nullptr;
 	uint32_t		maxThPool_     = 32;
+	uint32_t		maxNRTasks_    = 0;
 	std::atomic<uint32_t>	activeThPool_  = 0;
 
 	std::condition_variable masterCond_;
