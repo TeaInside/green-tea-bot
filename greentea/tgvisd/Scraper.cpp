@@ -238,9 +238,7 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 
 	pr_notice("pk_uid: %lu; pk_gid: %lu", pk_uid, pk_gid);
 
-	chat_lock->lock();
 	_save_msg(msg, pk_gid, pk_uid);
-	chat_lock->unlock();
 
 	// auto &text = static_cast<td_api::messageText &>(*content);
 	// pr_notice("text = %s", text.text_->text_.c_str());
