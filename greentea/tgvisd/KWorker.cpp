@@ -37,6 +37,7 @@ __cold KWorker::KWorker(Main *main, uint32_t maxThPool, uint32_t maxDbPool,
 	td_(main->getTd()),
 	main_(main),
 	maxThPool_(maxThPool),
+	maxNRTasks_(maxNRTasks),
 	activeThPool_(0)
 {
 	uint32_t i;
@@ -234,6 +235,11 @@ void KWorker::runThreadPool(struct thpool *pool)
 		data.current = pool;
 		pool->setUninterruptible();
 		tw->func(&data);
+		if (tw->deleter) {
+			tw->deleter(tw->payload);
+			tw->deleter = nullptr;
+		}
+		tw->payload = nullptr;
 		putTaskWork(tw);
 		pool->setInterruptible();
 		idle_c = 0;
@@ -437,6 +443,16 @@ __cold void KWorker::cleanUp(void)
 	}
 
 	if (tasks_) {
+		for (i = 0; i < maxNRTasks_; i++) {
+			struct task_work *tw;
+
+			tw = &tasks_[i];
+			if (tw->deleter) {
+				tw->deleter(tw->payload);
+				tw->deleter = nullptr;
+			}
+			tw->payload = nullptr;
+		}
 		delete[] tasks_;
 		tasks_ = nullptr;
 	}

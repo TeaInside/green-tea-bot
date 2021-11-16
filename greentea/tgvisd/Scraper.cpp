@@ -96,15 +96,34 @@ __hot void Scraper::_run(void)
 }
 
 
+struct scraper_payload {
+	td_api::object_ptr<td_api::chat>	chat;
+};
+
+
+static void scraper_payload_deleter(void *p)
+{
+	delete (struct scraper_payload *)p;
+}
+
+
 __hot void Scraper::visit_chat(td_api::object_ptr<td_api::chat> &chat)
 {
 	int ret;
 	struct task_work tw;
+	struct scraper_payload *payload;
+
+	payload = new struct scraper_payload;
+	payload->chat = std::move(chat);
 
 	tw.func = [this](struct tw_data *data){
-		this->_visit_chat(data, data->tw->data);
+		struct scraper_payload *payload;
+
+		payload = (struct scraper_payload *)data->tw->payload;
+		this->_visit_chat(data, payload->chat);
 	};
-	tw.data = std::move(chat);
+	tw.payload = (void *)payload;
+	tw.deleter = scraper_payload_deleter;
 
 	do {
 		if (shouldStop())
@@ -166,6 +185,20 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	uint64_t pk_gid, pk_uid, pk_mid;
 	td_api::object_ptr<td_api::chat> chat2 = nullptr;
 
+	if (unlikely(!msg->sender_)) {
+		pr_notice("save_message(): Ignoring message, as it does not "
+			  "have a sender (%ld) [%s]", (*chat)->id_,
+			  (*chat)->title_.c_str());
+		return;
+	}
+
+	if (unlikely(msg->sender_->get_id() != td_api::messageSenderUser::ID)) {
+		pr_notice("save_message(): Ignoring message, as it is not sent "
+			  "by messageSenderUser object (%ld) [%s]",
+			  (*chat)->id_, (*chat)->title_.c_str());
+		return;
+	}
+
 	if (!chat) {
 		chat2 = kworker_->getChat(msg->chat_id_);
 		if (unlikely(!chat2)) {
@@ -186,14 +219,6 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	}
 
 
-	if (unlikely(!msg->sender_)) {
-		pr_notice("save_message(): Ignoring message, as it does not "
-			  "have a sender (%ld) [%s]", (*chat)->id_,
-			  (*chat)->title_.c_str());
-		return;
-	}
-
-
 	pk_gid = touch_group_chat(*chat, chat_lock);
 	if (unlikely(pk_gid == 0)) {
 		pr_err("save_message(): Ignoring message, could not get pk_gid "
@@ -201,13 +226,6 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 		return;
 	}
 
-
-	if (unlikely(msg->sender_->get_id() != td_api::messageSenderUser::ID)) {
-		pr_notice("save_message(): Ignoring message, as it is not sent "
-			  "by messageSenderUser object (%ld) [%s]",
-			  (*chat)->id_, (*chat)->title_.c_str());
-		return;
-	}
 
 	auto sender = td::move_tl_object_as<td_api::messageSenderUser>(msg->sender_);
 	pk_uid = touch_user_with_uid(sender->user_id_);
@@ -219,9 +237,7 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 
 	pr_notice("pk_uid: %lu; pk_gid: %lu", pk_uid, pk_gid);
 
-	chat_lock->lock();
 	_save_msg(msg, pk_gid, pk_uid);
-	chat_lock->unlock();
 
 	// auto &text = static_cast<td_api::messageText &>(*content);
 	// pr_notice("text = %s", text.text_->text_.c_str());
