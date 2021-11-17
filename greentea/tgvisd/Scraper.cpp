@@ -282,9 +282,7 @@ __hot static uint64_t __save_msg(mysql::MySQL *db,
 				 td_api::object_ptr<td_api::message> &msg,
 				 uint64_t pk_gid, uint64_t pk_uid)
 {
-	int errret;
 	uint64_t pk_mid;
-	const char *errstr = nullptr;
 	const char *stmtErrFunc = nullptr;
 	mysql::MySQLStmt *stmt = nullptr;
 	int64_t tg_msg_id, reply_to_tg_msg_id;
@@ -307,8 +305,10 @@ __hot static uint64_t __save_msg(mysql::MySQL *db,
 		") VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NULL);"
 	);
 
-	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt))
-		goto prepare_err;
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
+		handle_prepare_err(db, stmt);
+		return -1ULL;
+	}
 
 	if (unlikely(stmt->stmtInit())) {
 		stmtErrFunc = "stmtInit";
@@ -346,24 +346,8 @@ __hot static uint64_t __save_msg(mysql::MySQL *db,
 	pk_mid = stmt->getInsertId();
 	goto out;
 
-prepare_err:
-	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
-		errret = MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
-		errstr = strerror(errret);
-	} else {
-		errstr = db->getError();
-		errret = db->getErrno();
-	}
-
-	stmt = nullptr;
-	pr_err("prepare(): (%d) %s", errret, errstr);
-	return -1ULL;
-
-
 stmt_err:
-	errstr = stmt->getError();
-	errret = stmt->getErrno();
-	pr_err("%s(): (%d) %s", stmtErrFunc, errret, errstr);
+	handle_stmt_err(stmtErrFunc, stmt);
 	pk_mid = -1ULL;
 out:
 	delete stmt;
@@ -481,8 +465,10 @@ __hot static uint64_t tgc_save_chat(mysql::MySQL *db,
 		"(?, NULL, NULL, ?, NOW(), NULL);"
 	);
 
-	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt))
-		goto prepare_err;
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
+		handle_prepare_err(db, stmt);
+		return -1ULL;
+	}
 
 	if (unlikely(stmt->stmtInit())) {
 		stmtErrFunc = "stmtInit";
@@ -506,14 +492,9 @@ __hot static uint64_t tgc_save_chat(mysql::MySQL *db,
 	pk_id = stmt->getInsertId();
 	goto out;
 
-prepare_err:
-	handle_prepare_err(db, stmt);
-	return -1ULL;
-
 stmt_err:
 	handle_stmt_err(stmtErrFunc, stmt);
 	pk_id = -1ULL;
-
 out:
 	delete stmt;
 	return pk_id;
@@ -637,8 +618,10 @@ __hot static uint64_t tgc_save_user(mysql::MySQL *db,
 		"(?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());"
 	);
 
-	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt))
-		goto prepare_err;
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
+		handle_prepare_err(db, stmt);
+		return -1ULL;
+	}
 
 	if (unlikely(stmt->stmtInit())) {
 		stmtErrFunc = "stmtInit";
@@ -705,14 +688,9 @@ __hot static uint64_t tgc_save_user(mysql::MySQL *db,
 	pk_id = stmt->getInsertId();
 	goto out;
 
-prepare_err:
-	handle_prepare_err(db, stmt);
-	return -1ULL;
-
 stmt_err:
 	handle_stmt_err(stmtErrFunc, stmt);
 	pk_id = -1ULL;
-
 out:
 	delete stmt;
 	return pk_id;
