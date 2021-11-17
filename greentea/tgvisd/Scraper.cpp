@@ -246,6 +246,35 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 }
 
 
+__cold static void handle_prepare_err(mysql::MySQL *db, mysql::MySQLStmt *stmt)
+{
+	int err_ret;
+	const char *err_str;
+
+	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
+		err_ret = -MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
+		err_str = strerror(err_ret);
+	} else {
+		err_ret = db->getErrno();
+		err_str = db->getError();
+	}
+
+	pr_err("prepare(): (%d) %s", err_ret, err_str);
+}
+
+
+__cold static void handle_stmt_err(const char *stmtErrFunc,
+				   mysql::MySQLStmt *stmt)
+{
+	int err_ret;
+	const char *err_str;
+
+	err_ret = stmt->getErrno();
+	err_str = stmt->getError();
+	pr_err("%s(): (%d) %s", stmtErrFunc, err_ret, err_str);
+}
+
+
 #define ZSTRL(STR) STR, sizeof(STR) - 1
 
 
@@ -427,35 +456,6 @@ __hot static uint64_t tgc_get_pk_id(mysql::MySQL *db, int64_t tg_chat_id)
 out:
 	delete res;
 	return pk_id;
-}
-
-
-__cold static void handle_prepare_err(mysql::MySQL *db, mysql::MySQLStmt *stmt)
-{
-	int err_ret;
-	const char *err_str;
-
-	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
-		err_ret = -MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
-		err_str = strerror(err_ret);
-	} else {
-		err_ret = db->getErrno();
-		err_str = db->getError();
-	}
-
-	pr_err("prepare(): (%d) %s", err_ret, err_str);
-}
-
-
-__cold static void handle_stmt_err(const char *stmtErrFunc,
-				   mysql::MySQLStmt *stmt)
-{
-	int err_ret;
-	const char *err_str;
-
-	err_ret = stmt->getErrno();
-	err_str = stmt->getError();
-	pr_err("%s(): (%d) %s", stmtErrFunc, err_ret, err_str);
 }
 
 
