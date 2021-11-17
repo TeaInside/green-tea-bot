@@ -430,12 +430,39 @@ out:
 }
 
 
+__cold static void handle_prepare_err(mysql::MySQL *db, mysql::MySQLStmt *stmt)
+{
+	int err_ret;
+	const char *err_str;
+
+	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
+		err_ret = -MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
+		err_str = strerror(err_ret);
+	} else {
+		err_ret = db->getErrno();
+		err_str = db->getError();
+	}
+
+	pr_err("prepare(): (%d) %s", err_ret, err_str);
+}
+
+
+__cold static void handle_stmt_err(const char *stmtErrFunc,
+				   mysql::MySQLStmt *stmt)
+{
+	int err_ret;
+	const char *err_str;
+
+	err_ret = stmt->getErrno();
+	err_str = stmt->getError();
+	pr_err("%s(): (%d) %s", stmtErrFunc, err_ret, err_str);
+}
+
+
 __hot static uint64_t tgc_save_chat(mysql::MySQL *db,
 				    td_api::object_ptr<td_api::chat> &chat)
 {
-	int errret;
 	uint64_t pk_id;
-	const char *errstr = nullptr;
 	const char *stmtErrFunc = nullptr;
 	mysql::MySQLStmt *stmt = nullptr;
 
@@ -480,24 +507,13 @@ __hot static uint64_t tgc_save_chat(mysql::MySQL *db,
 	goto out;
 
 prepare_err:
-	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
-		errret = MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
-		errstr = strerror(errret);
-	} else {
-		errstr = db->getError();
-		errret = db->getErrno();
-	}
-
-	stmt = nullptr;
-	pr_err("prepare(): (%d) %s", errret, errstr);
+	handle_prepare_err(db, stmt);
 	return -1ULL;
 
-
 stmt_err:
-	errstr = stmt->getError();
-	errret = stmt->getErrno();
-	pr_err("%s(): (%d) %s", stmtErrFunc, errret, errstr);
+	handle_stmt_err(stmtErrFunc, stmt);
 	pk_id = -1ULL;
+
 out:
 	delete stmt;
 	return pk_id;
@@ -595,15 +611,13 @@ out:
 __hot static uint64_t tgc_save_user(mysql::MySQL *db,
 				    td_api::object_ptr<td_api::user> &u)
 {
-	int errret;
 	MYSQL_BIND *b;
 	uint64_t pk_id;
-	const char *errstr = nullptr;
+	bool null_v = true;
 	size_t userTypeLen = 0;
 	const char *userType = nullptr;
 	const char *stmtErrFunc = nullptr;
 	mysql::MySQLStmt *stmt = nullptr;
-	bool null_v = true;
 
 	stmt = db->prepare(9,
 		"INSERT INTO `gt_users` "
@@ -692,24 +706,13 @@ __hot static uint64_t tgc_save_user(mysql::MySQL *db,
 	goto out;
 
 prepare_err:
-	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
-		errret = MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
-		errstr = strerror(errret);
-	} else {
-		errstr = db->getError();
-		errret = db->getErrno();
-	}
-
-	stmt = nullptr;
-	pr_err("prepare(): (%d) %s", errret, errstr);
+	handle_prepare_err(db, stmt);
 	return -1ULL;
 
-
 stmt_err:
-	errstr = stmt->getError();
-	errret = stmt->getErrno();
-	pr_err("%s(): (%d) %s", stmtErrFunc, errret, errstr);
+	handle_stmt_err(stmtErrFunc, stmt);
 	pk_id = -1ULL;
+
 out:
 	delete stmt;
 	return pk_id;
