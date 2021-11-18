@@ -110,6 +110,12 @@ __cold static void main_sighandler(int sig)
 
 __cold static void set_interrupt_handler(void)
 {
+	int ern;
+	struct sigaction sa;
+
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = main_sighandler;
+
 	/*
 	 * Use signal interrupt handler to kill the
 	 * process gracefully on Linux.
@@ -124,12 +130,21 @@ __cold static void set_interrupt_handler(void)
 	 */
 	sig_mutex.lock();
 	if (unlikely(!is_sighandler_set)) {
-		signal(SIGINT, main_sighandler);
-		signal(SIGHUP, main_sighandler);
-		signal(SIGTERM, main_sighandler);
+		if (unlikely(sigaction(SIGINT, &sa, NULL) < 0))
+			goto err;
+		if (unlikely(sigaction(SIGHUP, &sa, NULL) < 0))
+			goto err;
+		if (unlikely(sigaction(SIGTERM, &sa, NULL) < 0))
+			goto err;
 		is_sighandler_set = true;
 	}
 	sig_mutex.unlock();
+	return;
+
+err:
+	sig_mutex.unlock();
+	ern = errno;
+	panic("Failed to call sigaction(): (%d) %s", ern, strerror(ern));
 }
 
 #else /* #if defined(__linux__) */
