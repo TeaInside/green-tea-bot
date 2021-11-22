@@ -30,7 +30,7 @@
 namespace tgvisd {
 
 
-Scraper::Scraper(Main *main):
+__cold Scraper::Scraper(Main *main):
 	main_(main),
 	kworker_(main->getKWorker())
 {
@@ -96,15 +96,34 @@ __hot void Scraper::_run(void)
 }
 
 
+struct scraper_payload {
+	td_api::object_ptr<td_api::chat>	chat;
+};
+
+
+static void scraper_payload_deleter(void *p)
+{
+	delete (struct scraper_payload *)p;
+}
+
+
 __hot void Scraper::visit_chat(td_api::object_ptr<td_api::chat> &chat)
 {
 	int ret;
 	struct task_work tw;
+	struct scraper_payload *payload;
+
+	payload = new struct scraper_payload;
+	payload->chat = std::move(chat);
 
 	tw.func = [this](struct tw_data *data){
-		this->_visit_chat(data, data->tw->data);
+		struct scraper_payload *payload;
+
+		payload = (struct scraper_payload *)data->tw->payload;
+		this->_visit_chat(data, payload->chat);
 	};
-	tw.data = std::move(chat);
+	tw.payload = (void *)payload;
+	tw.deleter = scraper_payload_deleter;
 
 	do {
 		if (shouldStop())
@@ -166,6 +185,20 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	uint64_t pk_gid, pk_uid, pk_mid;
 	td_api::object_ptr<td_api::chat> chat2 = nullptr;
 
+	if (unlikely(!msg->sender_)) {
+		pr_notice("save_message(): Ignoring message, as it does not "
+			  "have a sender (%ld) [%s]", (*chat)->id_,
+			  (*chat)->title_.c_str());
+		return;
+	}
+
+	if (unlikely(msg->sender_->get_id() != td_api::messageSenderUser::ID)) {
+		pr_notice("save_message(): Ignoring message, as it is not sent "
+			  "by messageSenderUser object (%ld) [%s]",
+			  (*chat)->id_, (*chat)->title_.c_str());
+		return;
+	}
+
 	if (!chat) {
 		chat2 = kworker_->getChat(msg->chat_id_);
 		if (unlikely(!chat2)) {
@@ -186,14 +219,6 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	}
 
 
-	if (unlikely(!msg->sender_)) {
-		pr_notice("save_message(): Ignoring message, as it does not "
-			  "have a sender (%ld) [%s]", (*chat)->id_,
-			  (*chat)->title_.c_str());
-		return;
-	}
-
-
 	pk_gid = touch_group_chat(*chat, chat_lock);
 	if (unlikely(pk_gid == 0)) {
 		pr_err("save_message(): Ignoring message, could not get pk_gid "
@@ -201,13 +226,6 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 		return;
 	}
 
-
-	if (unlikely(msg->sender_->get_id() != td_api::messageSenderUser::ID)) {
-		pr_notice("save_message(): Ignoring message, as it is not sent "
-			  "by messageSenderUser object (%ld) [%s]",
-			  (*chat)->id_, (*chat)->title_.c_str());
-		return;
-	}
 
 	auto sender = td::move_tl_object_as<td_api::messageSenderUser>(msg->sender_);
 	pk_uid = touch_user_with_uid(sender->user_id_);
@@ -219,9 +237,7 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 
 	pr_notice("pk_uid: %lu; pk_gid: %lu", pk_uid, pk_gid);
 
-	chat_lock->lock();
 	_save_msg(msg, pk_gid, pk_uid);
-	chat_lock->unlock();
 
 	// auto &text = static_cast<td_api::messageText &>(*content);
 	// pr_notice("text = %s", text.text_->text_.c_str());
@@ -230,16 +246,43 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 }
 
 
+__cold static void handle_prepare_err(mysql::MySQL *db, mysql::MySQLStmt *stmt)
+{
+	int err_ret;
+	const char *err_str;
+
+	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
+		err_ret = -MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
+		err_str = strerror(err_ret);
+	} else {
+		err_ret = db->getErrno();
+		err_str = db->getError();
+	}
+
+	pr_err("prepare(): (%d) %s", err_ret, err_str);
+}
+
+
+__cold static void handle_stmt_err(const char *stmtErrFunc,
+				   mysql::MySQLStmt *stmt)
+{
+	int err_ret;
+	const char *err_str;
+
+	err_ret = stmt->getErrno();
+	err_str = stmt->getError();
+	pr_err("%s(): (%d) %s", stmtErrFunc, err_ret, err_str);
+}
+
+
 #define ZSTRL(STR) STR, sizeof(STR) - 1
 
 
-static uint64_t __save_msg(mysql::MySQL *db,
-			   td_api::object_ptr<td_api::message> &msg,
-			   uint64_t pk_gid, uint64_t pk_uid)
+__hot static uint64_t __save_msg(mysql::MySQL *db,
+				 td_api::object_ptr<td_api::message> &msg,
+				 uint64_t pk_gid, uint64_t pk_uid)
 {
-	int errret;
 	uint64_t pk_mid;
-	const char *errstr = nullptr;
 	const char *stmtErrFunc = nullptr;
 	mysql::MySQLStmt *stmt = nullptr;
 	int64_t tg_msg_id, reply_to_tg_msg_id;
@@ -262,8 +305,10 @@ static uint64_t __save_msg(mysql::MySQL *db,
 		") VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NULL);"
 	);
 
-	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt))
-		goto prepare_err;
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
+		handle_prepare_err(db, stmt);
+		return -1ULL;
+	}
 
 	if (unlikely(stmt->stmtInit())) {
 		stmtErrFunc = "stmtInit";
@@ -301,24 +346,8 @@ static uint64_t __save_msg(mysql::MySQL *db,
 	pk_mid = stmt->getInsertId();
 	goto out;
 
-prepare_err:
-	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
-		errret = MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
-		errstr = strerror(errret);
-	} else {
-		errstr = db->getError();
-		errret = db->getErrno();
-	}
-
-	stmt = nullptr;
-	pr_err("prepare(): (%d) %s", errret, errstr);
-	return -1ULL;
-
-
 stmt_err:
-	errstr = stmt->getError();
-	errret = stmt->getErrno();
-	pr_err("%s(): (%d) %s", stmtErrFunc, errret, errstr);
+	handle_stmt_err(stmtErrFunc, stmt);
 	pk_mid = -1ULL;
 out:
 	delete stmt;
@@ -326,8 +355,8 @@ out:
 }
 
 
-void Scraper::_save_msg(td_api::object_ptr<td_api::message> &msg,
-			uint64_t pk_gid, uint64_t pk_uid)
+__hot void Scraper::_save_msg(td_api::object_ptr<td_api::message> &msg,
+			      uint64_t pk_gid, uint64_t pk_uid)
 {
 	int tmp;
 	uint64_t pk_mid;
@@ -377,7 +406,7 @@ out_put:
 }
 
 
-static uint64_t tgc_get_pk_id(mysql::MySQL *db, int64_t tg_chat_id)
+__hot static uint64_t tgc_get_pk_id(mysql::MySQL *db, int64_t tg_chat_id)
 {
 	uint64_t pk_id;
 	int qlen, tmp;
@@ -414,12 +443,10 @@ out:
 }
 
 
-static uint64_t tgc_save_chat(mysql::MySQL *db,
-			      td_api::object_ptr<td_api::chat> &chat)
+__hot static uint64_t tgc_save_chat(mysql::MySQL *db,
+				    td_api::object_ptr<td_api::chat> &chat)
 {
-	int errret;
 	uint64_t pk_id;
-	const char *errstr = nullptr;
 	const char *stmtErrFunc = nullptr;
 	mysql::MySQLStmt *stmt = nullptr;
 
@@ -438,8 +465,10 @@ static uint64_t tgc_save_chat(mysql::MySQL *db,
 		"(?, NULL, NULL, ?, NOW(), NULL);"
 	);
 
-	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt))
-		goto prepare_err;
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
+		handle_prepare_err(db, stmt);
+		return -1ULL;
+	}
 
 	if (unlikely(stmt->stmtInit())) {
 		stmtErrFunc = "stmtInit";
@@ -463,24 +492,8 @@ static uint64_t tgc_save_chat(mysql::MySQL *db,
 	pk_id = stmt->getInsertId();
 	goto out;
 
-prepare_err:
-	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
-		errret = MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
-		errstr = strerror(errret);
-	} else {
-		errstr = db->getError();
-		errret = db->getErrno();
-	}
-
-	stmt = nullptr;
-	pr_err("prepare(): (%d) %s", errret, errstr);
-	return -1ULL;
-
-
 stmt_err:
-	errstr = stmt->getError();
-	errret = stmt->getErrno();
-	pr_err("%s(): (%d) %s", stmtErrFunc, errret, errstr);
+	handle_stmt_err(stmtErrFunc, stmt);
 	pk_id = -1ULL;
 out:
 	delete stmt;
@@ -539,7 +552,7 @@ uint64_t Scraper::touch_user_with_uid(int64_t tg_user_id, std::mutex *user_lock)
 }
 
 
-static uint64_t tu_get_pk_id(mysql::MySQL *db, int64_t tg_user_id)
+__hot static uint64_t tu_get_pk_id(mysql::MySQL *db, int64_t tg_user_id)
 {
 	uint64_t pk_id;
 	int qlen, tmp;
@@ -576,18 +589,16 @@ out:
 }
 
 
-static uint64_t tgc_save_user(mysql::MySQL *db,
-			      td_api::object_ptr<td_api::user> &u)
+__hot static uint64_t tgc_save_user(mysql::MySQL *db,
+				    td_api::object_ptr<td_api::user> &u)
 {
-	int errret;
 	MYSQL_BIND *b;
 	uint64_t pk_id;
-	const char *errstr = nullptr;
+	bool null_v = true;
 	size_t userTypeLen = 0;
 	const char *userType = nullptr;
 	const char *stmtErrFunc = nullptr;
 	mysql::MySQLStmt *stmt = nullptr;
-	bool null_v = true;
 
 	stmt = db->prepare(9,
 		"INSERT INTO `gt_users` "
@@ -607,8 +618,10 @@ static uint64_t tgc_save_user(mysql::MySQL *db,
 		"(?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());"
 	);
 
-	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt))
-		goto prepare_err;
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
+		handle_prepare_err(db, stmt);
+		return -1ULL;
+	}
 
 	if (unlikely(stmt->stmtInit())) {
 		stmtErrFunc = "stmtInit";
@@ -675,24 +688,8 @@ static uint64_t tgc_save_user(mysql::MySQL *db,
 	pk_id = stmt->getInsertId();
 	goto out;
 
-prepare_err:
-	if (MYSQL_IS_ERR<mysql::MySQLStmt>(stmt)) {
-		errret = MYSQL_PTR_ERR<mysql::MySQLStmt>(stmt);
-		errstr = strerror(errret);
-	} else {
-		errstr = db->getError();
-		errret = db->getErrno();
-	}
-
-	stmt = nullptr;
-	pr_err("prepare(): (%d) %s", errret, errstr);
-	return -1ULL;
-
-
 stmt_err:
-	errstr = stmt->getError();
-	errret = stmt->getErrno();
-	pr_err("%s(): (%d) %s", stmtErrFunc, errret, errstr);
+	handle_stmt_err(stmtErrFunc, stmt);
 	pk_id = -1ULL;
 out:
 	delete stmt;
@@ -700,8 +697,8 @@ out:
 }
 
 
-uint64_t Scraper::touch_user(td_api::object_ptr<td_api::user> &user,
-			     std::mutex *user_lock)
+__hot uint64_t Scraper::touch_user(td_api::object_ptr<td_api::user> &user,
+				   std::mutex *user_lock)
 {
 	uint64_t ret = 0;
 	mysql::MySQL *db;
