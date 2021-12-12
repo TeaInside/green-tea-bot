@@ -41,7 +41,12 @@ try {
 	}
 } catch (\Error $e) {
 	$code = 500;
-	// $msg  = "Internal server error";
+	$msg  = "Internal server error";
+
+	/*
+	 * Note: Use $e->__toString() for debugging purpose only.
+	 *       Comment this line out in production!
+	 */
 	$msg  = $e->__toString();
 }
 
