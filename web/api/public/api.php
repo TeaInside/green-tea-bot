@@ -31,7 +31,18 @@ try {
 	switch ($action) {
 	case "get_group_list":
 		$api = new GetGroupList();
-		$msg = $api->get();
+		$arg = [];
+
+		if (isset($_GET["limit"]) && is_numeric($_GET["limit"]))
+			$arg[0] = (int) $_GET["limit"];
+
+		if (isset($_GET["offset"]) && is_numeric($_GET["offset"])) {
+			if (!isset($arg[0]))
+				$arg[0] = 100;
+			$arg[1] = (int) $_GET["offset"];
+		}
+
+		$msg = $api->get(...$arg);
 		if ($api->isError())
 			$code = $api->getErrorCode();
 		break;

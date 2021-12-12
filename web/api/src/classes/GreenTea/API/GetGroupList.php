@@ -19,15 +19,32 @@ class GetGroupList extends APIFoundation
 	public function get(int $limit = 100, int $offset = 0): array
 	{
 		$pdo  = $this->getPDO();
-		$isOk = true;
+		$isOk = false;
 		$msg  = NULL;
-		$data = [];
+		$data = NULL;
+		$this->errorCode = 400;
 
-		$query = "SELECT * FROM gt_groups LIMIT {$limit} OFFSET {$offset}";
+		if ($limit < 0) {
+			$msg  = sprintf("limit cannot be negative (given limit %d)", $limit);
+			goto out;
+		}
+		if ($limit > 300) {
+			$msg  = sprintf("limit cannot be greater than 300 (given limit %d)", $limit);
+			goto out;
+		}
+		if ($offset < 0) {
+			$msg  = sprintf("offset cannot be negative (given offset %d)", $offset);
+			goto out;
+		}
+
+		$query = "SELECT * FROM gt_groups ORDER BY id ASC LIMIT {$limit} OFFSET {$offset}";
 		$st    = $pdo->prepare($query);
 		$st->execute();
 		$data  = $st->fetchAll(PDO::FETCH_ASSOC);
+		$isOk  = true;
+		$this->errorCode = 0;
 
+	out:
 		return [
 			"is_ok" => $isOk,
 			"msg"   => $msg,
