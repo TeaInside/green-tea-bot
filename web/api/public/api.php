@@ -6,6 +6,8 @@
  * Green Tea Bot API endpoint.
  */
 
+use GreenTea\API\GetGroupList;
+
 $msg  = NULL;
 $code = 200;
 
@@ -24,12 +26,23 @@ $action = $_GET["action"];
 $action = substr($action, 0, 32);
 unset($_GET["action"]);
 
-switch ($action) {
-case "get_telegram_chat":
-	break;
-default:
-	$msg  = "Invalid action \"{$action}\"";
-	$code = 400;
+try {
+	require __DIR__."/../src/autoload.php";
+	switch ($action) {
+	case "get_group_list":
+		$api = new GetGroupList();
+		$msg = $api->get();
+		if ($api->isError())
+			$code = $api->getErrorCode();
+		break;
+	default:
+		$msg  = "Invalid action \"{$action}\"";
+		$code = 400;
+	}
+} catch (\Error $e) {
+	$code = 500;
+	// $msg  = "Internal server error";
+	$msg  = $e->__toString();
 }
 
 
@@ -39,4 +52,4 @@ header("Content-Type: application/json");
 echo json_encode([
 	"code" => $code,
 	"msg"  => $msg
-]);
+], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
