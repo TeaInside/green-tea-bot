@@ -11,5 +11,9 @@
 
 namespace tgvisd::Logger::Sender {
 
+uint64_t Chat::getPK(void)
+{
+	return 0;
+}
 
 } /* namespace tgvisd::Logger::Sender */

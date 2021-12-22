@@ -16,6 +16,10 @@ namespace tgvisd::Logger {
 
 class SenderFoundation
 {
+public:
+	virtual ~SenderFoundation(void) = default;
+	virtual uint64_t getPK(void) = 0;
+
 protected:
 	KWorker				*kworker_ = nullptr;
 	const td_api::MessageSender	&sender_;

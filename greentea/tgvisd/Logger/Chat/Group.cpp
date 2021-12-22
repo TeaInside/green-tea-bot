@@ -11,4 +11,9 @@
 
 namespace tgvisd::Logger::Chat {
 
+uint64_t Group::getPK(void)
+{
+	return 0;
+}
+
 } /* namespace tgvisd::Logger::Chat */

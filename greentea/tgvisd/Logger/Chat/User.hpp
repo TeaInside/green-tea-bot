@@ -22,6 +22,8 @@ public:
 		tgvisd::Logger::ChatFoundation(kworker, chat)
 	{
 	}
+
+	uint64_t getPK(void) override;
 };
 
 } /* namespace tgvisd::Logger::Chat */

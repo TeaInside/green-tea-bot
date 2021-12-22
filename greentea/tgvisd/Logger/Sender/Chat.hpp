@@ -22,6 +22,8 @@ public:
 		tgvisd::Logger::SenderFoundation(kworker, sender)
 	{
 	}
+
+	uint64_t getPK(void) override;
 };
 
 } /* namespace tgvisd::Logger::Sender */

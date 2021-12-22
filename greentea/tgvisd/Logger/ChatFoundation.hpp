@@ -16,6 +16,10 @@ namespace tgvisd::Logger {
 
 class ChatFoundation
 {
+public:
+	virtual ~ChatFoundation(void) = default;
+	virtual uint64_t getPK(void) = 0;
+
 protected:
 	KWorker				*kworker_ = nullptr;
 	const td_api::chat		&chat_;
