@@ -95,13 +95,28 @@ bool Message::resolve_sender(void)
 }
 
 bool Message::resolve_pk(void)
+	__acquires(chat_lock_)
+	__releases(chat_lock_)
 {
+	bool ret = false;
 	assert(m_chat_);
 	assert(m_sender_);
+	assert(chat_lock_);
 
-	// pk_chat_id_ = m_chat_->getPK();
-	// pk_sender_id_ = m_sender_->getPK();
-	return true;
+	chat_lock_->lock();
+
+	pk_chat_id_ = m_chat_->getPK();
+	if (unlikely(!pk_chat_id_))
+		goto out;
+
+	pk_sender_id_ = m_sender_->getPK();
+	if (unlikely(!pk_sender_id_))
+		goto out;
+
+	ret = true;
+out:
+	chat_lock_->unlock();
+	return ret;
 }
 
 void Message::save(void)
@@ -114,9 +129,6 @@ void Message::save(void)
 
 	if (!resolve_pk())
 		return;
-
-	chat_lock_->lock();
-	chat_lock_->unlock();
 }
 
 } /* namespace tgvisd::Logger */
