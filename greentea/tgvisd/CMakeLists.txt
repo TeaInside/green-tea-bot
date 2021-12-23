@@ -76,6 +76,8 @@ set(
 	entry.cpp
 	Main.cpp
 	Main.hpp
+	mysql_helpers.hpp
+	mysql_helpers.cpp
 	print.c
 	print.h
 	Scraper.cpp
