@@ -67,6 +67,8 @@ static __always_inline void cpu_relax(void)
 	__asm__ volatile("pause");
 }
 
+#define ZSTRL(STR) STR, sizeof(STR) - 1
+
 #include <tgvisd/print.h>
 
 #endif /* #ifndef TGVISD__COMMON_HPP */

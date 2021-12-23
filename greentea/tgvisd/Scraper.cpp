@@ -36,7 +36,6 @@ __cold Scraper::Scraper(Main *main):
 {
 }
 
-
 __hot void Scraper::run(void)
 {
 	while (!main_->isReady()) {
@@ -46,26 +45,55 @@ __hot void Scraper::run(void)
 	}
 
 	while (1) {
-		uint32_t i;
-
-		for (i = 0; i < 30; i++) {
-			if (shouldStop())
-				return;
-			_run();
-			sleep(1);
-		}
-
-
-		for (i = 0; i < 60; i++) {
-			if (shouldStop())
-				return;
-			if (i % 10 == 0)
-				_run();
-			sleep(1);
-		}
+		if (runFastPhase())
+			break;
+		if (runSlowPhase())
+			break;
 	}
 }
 
+/*
+ * Returns true  = stop.
+ * Returns false = continue.
+ */
+bool Scraper::runFastPhase(void)
+{
+	bool stop = false;
+	uint32_t i;
+
+	for (i = 0; i < 50; i++) {
+		if ((stop = shouldStop()))
+			break;
+		_run();
+		sleep(1);
+	}
+	return stop;
+}
+
+/*
+ * Returns true  = stop.
+ * Returns false = continue.
+ */
+bool Scraper::runSlowPhase(void)
+{
+	bool stop = false;
+	uint32_t i, j;
+
+	for (i = 0; i < 100; i++) {
+		if ((stop = shouldStop()))
+			break;
+		_run();
+
+		for (j = 0; j < 15; j++) {
+			if ((stop = shouldStop()))
+				goto out;
+			sleep(1);
+		}
+	}
+
+out:
+	return stop;
+}
 
 __hot void Scraper::_run(void)
 {
@@ -273,9 +301,6 @@ __cold static void handle_stmt_err(const char *stmtErrFunc,
 	err_str = stmt->getError();
 	pr_err("%s(): (%d) %s", stmtErrFunc, err_ret, err_str);
 }
-
-
-#define ZSTRL(STR) STR, sizeof(STR) - 1
 
 
 __hot static uint64_t __save_msg(mysql::MySQL *db,
