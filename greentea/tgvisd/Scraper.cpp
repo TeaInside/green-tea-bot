@@ -303,9 +303,6 @@ __cold static void handle_stmt_err(const char *stmtErrFunc,
 }
 
 
-#define ZSTRL(STR) STR, sizeof(STR) - 1
-
-
 __hot static uint64_t __save_msg(mysql::MySQL *db,
 				 td_api::object_ptr<td_api::message> &msg,
 				 uint64_t pk_gid, uint64_t pk_uid)
