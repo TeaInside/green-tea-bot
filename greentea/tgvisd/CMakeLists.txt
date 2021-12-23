@@ -54,12 +54,30 @@ target_compile_options(tgvisdtd PRIVATE
 
 set(
 	TGVISD_SOURCE
+
+	Logger/ChatFoundation.cpp
+	Logger/ChatFoundation.hpp
+	Logger/Chat/Group.cpp
+	Logger/Chat/Group.hpp
+	Logger/Chat/User.cpp
+	Logger/Chat/User.hpp
+	Logger/Sender/Chat.hpp
+	Logger/Sender/Chat.cpp
+	Logger/Sender/User.hpp
+	Logger/Sender/User.cpp
+	Logger/Message.cpp
+	Logger/Message.hpp
+	Logger/SenderFoundation.cpp
+	Logger/SenderFoundation.hpp
+
 	../mysql/MySQL.cpp
 	../mysql/MySQL.hpp
 	common.hpp
 	entry.cpp
 	Main.cpp
 	Main.hpp
+	mysql_helpers.hpp
+	mysql_helpers.cpp
 	print.c
 	print.h
 	Scraper.cpp

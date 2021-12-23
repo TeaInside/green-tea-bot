@@ -263,6 +263,25 @@ public:
 	MySQLStmt *prepare(size_t bind_num, const char *q) noexcept;
 	MySQLStmt *prepareLen(size_t bind_num, const char *q, size_t qlen) noexcept;
 
+	inline int beginTransaction(void)
+	{
+		static constexpr char q[] = "START TRANSACTION;";
+		return realQuery(q, sizeof(q) - 1);
+	}
+
+
+	inline int commit(void)
+	{
+		static constexpr char q[] = "COMMIT;";
+		return realQuery(q, sizeof(q) - 1);
+	}
+
+
+	inline int rollback(void)
+	{
+		static constexpr char q[] = "ROLLBACK;";
+		return realQuery(q, sizeof(q) - 1);
+	}
 
 	__hot inline int query(const char *q) noexcept
 	{
