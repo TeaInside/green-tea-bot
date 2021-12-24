@@ -41,7 +41,7 @@ bool Message::resolve_chat(void)
 	if (!chat_) {
 		chat_ = kworker_->getChat(message_.chat_id_);
 		if (unlikely(!chat_)) {
-			pr_err("get_chat(): "
+			pr_err("resolve_chat(): "
 			       "Could not get chat from message object %ld",
 			       message_.id_);
 			return false;
@@ -51,7 +51,7 @@ bool Message::resolve_chat(void)
 	if (!chat_lock_) {
 		chat_lock_ = kworker_->getChatLock(chat_->id_);
 		if (unlikely(!chat_lock_)) {
-			pr_err("get_chat(): "
+			pr_err("resolve_chat(): "
 			       "Could not get chat lock (%ld) [%s]",
 			       chat_->id_, chat_->title_.c_str());
 			return false;
@@ -77,17 +77,32 @@ bool Message::resolve_chat(void)
 
 bool Message::resolve_sender(void)
 {
+	int64_t lock_id;
 	const auto &s = message_.sender_;
 
 	switch (s->get_id()) {
 	case td_api::messageSenderUser::ID:
 		m_sender_ = new SenderUser(kworker_, *s);
+		if (sender_lock_)
+			break;
+		lock_id = static_cast<const td_api::messageSenderChat &>(*s).chat_id_;
+		sender_lock_ = kworker_->getUserLock(lock_id);
 		break;
 	case td_api::messageSenderChat::ID:
 		m_sender_ = new SenderChat(kworker_, *s);
+		if (sender_lock_)
+			break;
+		lock_id = static_cast<const td_api::messageSenderChat &>(*s).chat_id_;
+		sender_lock_ = kworker_->getChatLock(lock_id);
 		break;
 	default:
 		pr_err("Invalid sender type on resolve_sender()");
+		return false;
+	}
+
+	if (unlikely(!sender_lock_)) {
+		pr_err("resolve_sender(): Could not get chat lock (%ld) [%s]",
+		       chat_->id_, chat_->title_.c_str());
 		return false;
 	}
 
@@ -111,25 +126,28 @@ bool Message::resolve_pk(void)
 	__acquires(chat_lock_)
 	__releases(chat_lock_)
 {
-	bool ret = false;
 	assert(m_chat_);
 	assert(m_sender_);
 	assert(chat_lock_);
+	assert(sender_lock_);
 
 	chat_lock_->lock();
-
 	pk_chat_id_ = m_chat_->getPK();
-	if (unlikely(!pk_chat_id_))
-		goto out;
-
-	pk_sender_id_ = m_sender_->getPK();
-	if (unlikely(!pk_sender_id_))
-		goto out;
-
-	ret = true;
-out:
+	if (unlikely(!pk_chat_id_)) {
+		chat_lock_->unlock();
+		return false;
+	}
 	chat_lock_->unlock();
-	return ret;
+
+	sender_lock_->lock();
+	pk_sender_id_ = m_sender_->getPK();
+	if (unlikely(!pk_sender_id_)) {
+		sender_lock_->unlock();
+		return false;
+	}
+	sender_lock_->unlock();
+
+	return true;
 }
 
 void Message::save(void)

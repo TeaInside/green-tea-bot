@@ -46,6 +46,7 @@ protected:
 	KWorker					*kworker_ = nullptr;
 	td_api::object_ptr<td_api::chat>	chat_ = nullptr;
 	std::mutex				*chat_lock_ = nullptr;
+	std::mutex				*sender_lock_ = nullptr;
 	mysql::MySQL				*db_ = nullptr;
 
 	/* Models */
