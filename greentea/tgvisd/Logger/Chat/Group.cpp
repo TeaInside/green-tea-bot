@@ -13,24 +13,63 @@
 
 namespace tgvisd::Logger::Chat {
 
-static uint64_t create_group(mysql::MySQL *db, const td_api::chat &chat)
+struct chat_data {
+	const td_api::chat				&chat_;
+	td_api::object_ptr<td_api::supergroup>		sgroup_;
+	td_api::object_ptr<td_api::supergroupFullInfo>	sgroup_full_;
+
+	inline chat_data(const td_api::chat &chat,
+			 td_api::object_ptr<td_api::supergroup> sgroup,
+			 td_api::object_ptr<td_api::supergroupFullInfo> sgroup_full):
+		chat_(chat),
+		sgroup_(std::move(sgroup)),
+		sgroup_full_(std::move(sgroup_full))
+	{
+	}
+};
+
+static inline void *bn_str(bool p)
+{
+	return (void *) (p ? "1" : "0");
+}
+
+static uint64_t create_group_history(mysql::MySQL *db, struct chat_data *cd,
+				     uint64_t pk_group_id)
 {
 	uint64_t pk_id;
 	const char *stmtErrFunc = nullptr;
 	mysql::MySQLStmt *stmt = nullptr;
+	const td_api::chat &chat = cd->chat_;
+	const td_api::supergroup &sgroup = *cd->sgroup_;
+	const td_api::supergroupFullInfo &sgroup_full = *cd->sgroup_full_;
 
-	stmt = db->prepare(2,
-		"INSERT INTO `gt_groups` "
+	stmt = db->prepare(9,
+		"INSERT INTO `gt_groups_history` "
 		"("
-			"`tg_group_id`,"
+			"`group_id`,"
 			"`username`,"
 			"`link`,"
 			"`name`,"
-			"`created_at`,"
-			"`updated_at`"
+			"`description`,"
+			"`has_linked_chat`,"
+			"`is_slow_mode_enabled`,"
+			"`is_channel`,"
+			"`is_verified`,"
+			"`created_at`"
 		")"
 			" VALUES "
-		"(?, NULL, NULL, ?, NOW(), NULL);"
+		"("
+			"?,"		/* group_id */
+			"?,"		/* username */
+			"?,"		/* link */
+			"?,"		/* name */
+			"?,"		/* description */
+			"?,"		/* has_linked_chat */
+			"?,"		/* is_slow_mode_enabled */
+			"?,"		/* is_channel */
+			"?,"		/* is_verified */
+			"NOW()"		/* created_at */
+		");"
 	);
 
 	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
@@ -43,9 +82,38 @@ static uint64_t create_group(mysql::MySQL *db, const td_api::chat &chat)
 		goto stmt_err;
 	}
 
-	stmt->bind(0, MYSQL_TYPE_LONGLONG, (void *)&chat.id_, sizeof(chat.id_));
-	stmt->bind(1, MYSQL_TYPE_STRING, (void *)chat.title_.c_str(),
+	stmt->bind(0, MYSQL_TYPE_LONGLONG, (void *) &pk_group_id,
+		   sizeof(pk_group_id));
+
+	if (!sgroup.username_.size())
+		stmt->bind(1, MYSQL_TYPE_NULL, NULL, 0);
+	else
+		stmt->bind(1, MYSQL_TYPE_STRING,
+			   (void *) sgroup.username_.c_str(),
+			   sgroup.username_.size());
+
+	if (!sgroup_full.invite_link_ ||
+	    !sgroup_full.invite_link_->invite_link_.size())
+		stmt->bind(2, MYSQL_TYPE_NULL, NULL, 0);
+	else
+		stmt->bind(2, MYSQL_TYPE_STRING,
+			   (void *) sgroup_full.invite_link_->invite_link_.c_str(),
+			   sgroup_full.invite_link_->invite_link_.size());
+
+	stmt->bind(3, MYSQL_TYPE_STRING, (void *) chat.title_.c_str(),
 		   chat.title_.size());
+
+	if (!sgroup_full.description_.size())
+		stmt->bind(4, MYSQL_TYPE_NULL, NULL, 0);
+	else
+		stmt->bind(4, MYSQL_TYPE_STRING,
+			   (void *) sgroup_full.description_.c_str(),
+			   sgroup_full.description_.size());
+
+	stmt->bind(5, MYSQL_TYPE_STRING, bn_str(sgroup.has_linked_chat_), 1);
+	stmt->bind(6, MYSQL_TYPE_STRING, bn_str(sgroup.is_slow_mode_enabled_), 1);
+	stmt->bind(7, MYSQL_TYPE_STRING, bn_str(sgroup.is_channel_), 1);
+	stmt->bind(8, MYSQL_TYPE_STRING, bn_str(sgroup.is_verified_), 1);
 
 	if (unlikely(stmt->bindStmt())) {
 		stmtErrFunc = "bindStmt";
@@ -68,7 +136,113 @@ out:
 	return pk_id;
 }
 
-static uint64_t get_group_pk(mysql::MySQL *db, const td_api::chat &chat)
+static uint64_t create_group(mysql::MySQL *db, struct chat_data *cd)
+{
+	uint64_t pk_group_id;
+	const char *stmtErrFunc = nullptr;
+	mysql::MySQLStmt *stmt = nullptr;
+	const td_api::chat &chat = cd->chat_;
+	const td_api::supergroup &sgroup = *cd->sgroup_;
+	const td_api::supergroupFullInfo &sgroup_full = *cd->sgroup_full_;
+
+	stmt = db->prepare(9,
+		"INSERT INTO `gt_groups` "
+		"("
+			"`tg_group_id`,"
+			"`username`,"
+			"`link`,"
+			"`name`,"
+			"`description`,"
+			"`has_linked_chat`,"
+			"`is_slow_mode_enabled`,"
+			"`is_channel`,"
+			"`is_verified`,"
+			"`created_at`,"
+			"`updated_at`"
+		")"
+			" VALUES "
+		"("
+			"?,"		/* tg_group_id */
+			"?,"		/* username */
+			"?,"		/* link */
+			"?,"		/* name */
+			"?,"		/* description */
+			"?,"		/* has_linked_chat */
+			"?,"		/* is_slow_mode_enabled */
+			"?,"		/* is_channel */
+			"?,"		/* is_verified */
+			"NOW(),"	/* created_at */
+			"NULL"		/* updated_at */
+		");"
+	);
+
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
+		mysql_handle_prepare_err(db, stmt);
+		return 0;
+	}
+
+	if (unlikely(stmt->stmtInit())) {
+		stmtErrFunc = "stmtInit";
+		goto stmt_err;
+	}
+
+	stmt->bind(0, MYSQL_TYPE_LONGLONG, (void *) &chat.id_, sizeof(chat.id_));
+
+	if (!sgroup.username_.size())
+		stmt->bind(1, MYSQL_TYPE_NULL, NULL, 0);
+	else
+		stmt->bind(1, MYSQL_TYPE_STRING,
+			   (void *) sgroup.username_.c_str(),
+			   sgroup.username_.size());
+
+	if (!sgroup_full.invite_link_ ||
+	    !sgroup_full.invite_link_->invite_link_.size())
+		stmt->bind(2, MYSQL_TYPE_NULL, NULL, 0);
+	else
+		stmt->bind(2, MYSQL_TYPE_STRING,
+			   (void *) sgroup_full.invite_link_->invite_link_.c_str(),
+			   sgroup_full.invite_link_->invite_link_.size());
+
+	stmt->bind(3, MYSQL_TYPE_STRING, (void *) chat.title_.c_str(),
+		   chat.title_.size());
+
+	if (!sgroup_full.description_.size())
+		stmt->bind(4, MYSQL_TYPE_NULL, NULL, 0);
+	else
+		stmt->bind(4, MYSQL_TYPE_STRING,
+			   (void *) sgroup_full.description_.c_str(),
+			   sgroup_full.description_.size());
+
+	stmt->bind(5, MYSQL_TYPE_STRING, bn_str(sgroup.has_linked_chat_), 1);
+	stmt->bind(6, MYSQL_TYPE_STRING, bn_str(sgroup.is_slow_mode_enabled_), 1);
+	stmt->bind(7, MYSQL_TYPE_STRING, bn_str(sgroup.is_channel_), 1);
+	stmt->bind(8, MYSQL_TYPE_STRING, bn_str(sgroup.is_verified_), 1);
+
+	if (unlikely(stmt->bindStmt())) {
+		stmtErrFunc = "bindStmt";
+		goto stmt_err;
+	}
+
+	if (unlikely(stmt->execute())) {
+		stmtErrFunc = "execute";
+		goto stmt_err;
+	}
+
+	pk_group_id = stmt->getInsertId();
+	if (!create_group_history(db, cd, pk_group_id))
+		pk_group_id = 0;
+
+	goto out;
+
+stmt_err:
+	mysql_handle_stmt_err(stmtErrFunc, stmt);
+	pk_group_id = 0;
+out:
+	delete stmt;
+	return pk_group_id;
+}
+
+static uint64_t get_group_pk(mysql::MySQL *db, struct chat_data *cd)
 {
 	static const char q[] =
 		"SELECT id FROM gt_groups WHERE tg_group_id = %" PRId64;
@@ -79,7 +253,7 @@ static uint64_t get_group_pk(mysql::MySQL *db, const td_api::chat &chat)
 	mysql::MySQLRes *res;
 	char qbuf[sizeof(q) + 64];
 
-	qlen = snprintf(qbuf, sizeof(qbuf), q, chat.id_);
+	qlen = snprintf(qbuf, sizeof(qbuf), q, cd->chat_.id_);
 
 	tmp = db->realQuery(qbuf, (size_t) qlen);
 	if (unlikely(tmp)) {
@@ -95,7 +269,7 @@ static uint64_t get_group_pk(mysql::MySQL *db, const td_api::chat &chat)
 
 	row = res->fetchRow();
 	if (unlikely(!row)) {
-		ret = create_group(db, chat);
+		ret = create_group(db, cd);
 		goto out;
 	}
 
@@ -126,7 +300,7 @@ static uint64_t create_chat_group(mysql::MySQL *db, uint64_t pk_chat_id,
 	return 1;
 }
 
-static uint64_t create_chat(mysql::MySQL *db, const td_api::chat &chat)
+static uint64_t create_chat(mysql::MySQL *db, struct chat_data *cd)
 {
 	size_t chat_type_len;
 	uint64_t pk_chat_id = 0;
@@ -135,7 +309,7 @@ static uint64_t create_chat(mysql::MySQL *db, const td_api::chat &chat)
 	const char *chat_type = nullptr;
 	mysql::MySQLStmt *stmt = nullptr;
 
-	pk_group_id = get_group_pk(db, chat);
+	pk_group_id = get_group_pk(db, cd);
 	if (unlikely(!pk_group_id))
 		return 0;
 
@@ -151,7 +325,7 @@ static uint64_t create_chat(mysql::MySQL *db, const td_api::chat &chat)
 		goto stmt_err;
 	}
 
-	switch (chat.type_->get_id()) {
+	switch (cd->chat_.type_->get_id()) {
 	case td_api::chatTypeBasicGroup::ID:
 		chat_type = "chatTypeBasicGroup";
 		chat_type_len = sizeof("chatTypeBasicGroup") - 1;
@@ -200,24 +374,24 @@ out:
 	return pk_chat_id;
 }
 
-static uint64_t create_chat_in_trx(mysql::MySQL *db, const td_api::chat &chat)
+static uint64_t create_chat_in_trx(mysql::MySQL *db, struct chat_data *cd)
 {
 	int tmp;
 	uint64_t pk_chat_id;
 
-	tmp = db->realQuery(ZSTRL("START TRANSACTION"));
+	tmp = db->beginTransaction();
 	if (unlikely(tmp)) {
-		pr_err("realQuery(\"START TRANSACTION\"): %s", db->getError());
+		pr_err("beginTransaction(): %s", db->getError());
 		return 0;
 	}
 
-	pk_chat_id = create_chat(db, chat);
+	pk_chat_id = create_chat(db, cd);
 	if (unlikely(!pk_chat_id))
 		goto rollback;
 
-	tmp = db->realQuery(ZSTRL("COMMIT"));
+	tmp = db->commit();
 	if (unlikely(tmp)) {
-		pr_err("realQuery(\"COMMIT\"): %s", db->getError());
+		pr_err("commit(): %s", db->getError());
 		goto rollback;
 	}
 
@@ -225,14 +399,14 @@ static uint64_t create_chat_in_trx(mysql::MySQL *db, const td_api::chat &chat)
 	return pk_chat_id;
 
 rollback:
-	tmp = db->realQuery(ZSTRL("ROLLBACK"));
+	tmp = db->rollback();
 	if (unlikely(tmp))
-		pr_err("realQuery(\"ROLLBACK\"): %s", db->getError());
+		pr_err("rollback(): %s", db->getError());
 
 	return 0;
 }
 
-static uint64_t get_chat_pk(mysql::MySQL *db, const td_api::chat &chat)
+static uint64_t get_chat_pk(mysql::MySQL *db, struct chat_data *cd)
 {
 	static const char q[] =
 		"SELECT gt_chats.id FROM gt_chats INNER JOIN gt_chat_group "
@@ -245,6 +419,7 @@ static uint64_t get_chat_pk(mysql::MySQL *db, const td_api::chat &chat)
 	uint64_t pk_chat_id;
 	mysql::MySQLRes *res;
 	char qbuf[sizeof(q) + 64];
+	const td_api::chat &chat = cd->chat_;
 
 	qlen = snprintf(qbuf, sizeof(qbuf), q, chat.id_);
 
@@ -262,7 +437,7 @@ static uint64_t get_chat_pk(mysql::MySQL *db, const td_api::chat &chat)
 
 	row = res->fetchRow();
 	if (unlikely(!row)) {
-		pk_chat_id = create_chat_in_trx(db, chat);
+		pk_chat_id = create_chat_in_trx(db, cd);
 		goto out;
 	}
 
@@ -272,15 +447,57 @@ out:
 	return pk_chat_id;
 }
 
+static struct chat_data *get_chat_data(KWorker *kworker,
+				       const td_api::chat &chat)
+{
+	tgvisd::Td::Td *td;
+	const uint32_t timeout = 60;
+
+	const auto &tmp = static_cast<const td_api::chatTypeSupergroup &>(*chat.type_);
+	int32_t supergroup_id = tmp.supergroup_id_;
+
+	td = kworker->getTd();
+	assert(td);
+
+	auto sgroup = td->send_query_sync<td_api::getSupergroup, td_api::supergroup>(
+		td_api::make_object<td_api::getSupergroup>(supergroup_id),
+		timeout
+	);
+	if (unlikely(!sgroup))
+		return nullptr;
+
+	auto sgroup_full = td->send_query_sync<td_api::getSupergroupFullInfo, td_api::supergroupFullInfo>(
+		td_api::make_object<td_api::getSupergroupFullInfo>(supergroup_id),
+		timeout
+	);
+	if (unlikely(!sgroup_full))
+		return nullptr;
+
+	return new struct chat_data(chat, std::move(sgroup),
+				    std::move(sgroup_full));
+}
+
 uint64_t Group::getPK(void)
 {
 	mysql::MySQL *db;
+	uint64_t pk_chat_id;
+	struct chat_data *cd;
+
+	cd = get_chat_data(kworker_, chat_);
+	if (unlikely(!cd)) {
+		pr_err("Cannot get chat data on getPK");
+		return 0;
+	}
 
 	db = getDbPool();
-	if (unlikely(!db))
+	if (unlikely(!db)) {
+		delete cd;
 		return 0;
+	}
 
-	return get_chat_pk(db, chat_);
+	pk_chat_id = get_chat_pk(db, cd);
+	delete cd;
+	return pk_chat_id;
 }
 
 } /* namespace tgvisd::Logger::Chat */
