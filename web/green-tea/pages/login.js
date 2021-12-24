@@ -42,7 +42,7 @@ function login() {
                         </label>
                         <input
                             className="outline-none border-2 rounded-md px-3 py-3 mt-2 focus:border-dark-green"
-                            type="text"
+                            type="password"
                             id="password"
                             placeholder="Your password"
                             required
