@@ -46,6 +46,7 @@ protected:
 	KWorker					*kworker_ = nullptr;
 	td_api::object_ptr<td_api::chat>	chat_ = nullptr;
 	std::mutex				*chat_lock_ = nullptr;
+	mysql::MySQL				*db_ = nullptr;
 
 	/* Models */
 	tgvisd::Logger::ChatFoundation		*m_chat_ = nullptr;
@@ -64,6 +65,11 @@ private:
 	 * This will fill @m_chat_ and @chat_lock_.
 	 */
 	bool resolve_chat(void);
+
+	/**
+	 * This will fill @db_.
+	 */
+	bool resolve_db_pool(void);
 
 	/**
 	 * This will fill @pk_chat_id and pk_sender_id_.

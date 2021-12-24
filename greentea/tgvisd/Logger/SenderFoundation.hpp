@@ -17,13 +17,13 @@ namespace tgvisd::Logger {
 class SenderFoundation
 {
 public:
-	virtual ~SenderFoundation(void)
-	{
-		if (db_)
-			kworker_->putDbPool(db_);
-	}
-
+	virtual ~SenderFoundation(void) = default;
 	virtual uint64_t getPK(void) = 0;
+
+	inline void setDbPool(mysql::MySQL *db)
+	{
+		db_ = db;
+	}
 
 protected:
 	KWorker				*kworker_ = nullptr;
@@ -39,15 +39,6 @@ protected:
 
 	inline mysql::MySQL *getDbPool(void)
 	{
-		if (db_)
-			return db_;
-
-		db_ = kworker_->getDbPool();
-		if (unlikely(!db_)) {
-			pr_err("Cannot get DB pool");
-			return nullptr;
-		}
-
 		return db_;
 	}
 };

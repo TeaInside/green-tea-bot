@@ -94,6 +94,19 @@ bool Message::resolve_sender(void)
 	return true;
 }
 
+bool Message::resolve_db_pool(void)
+{
+	db_ = kworker_->getDbPool();
+	if (unlikely(!db_))
+		return false;
+
+	assert(m_chat_);
+	assert(m_sender_);
+	m_chat_->setDbPool(db_);
+	m_sender_->setDbPool(db_);
+	return true;
+}
+
 bool Message::resolve_pk(void)
 	__acquires(chat_lock_)
 	__releases(chat_lock_)
@@ -125,6 +138,9 @@ void Message::save(void)
 		return;
 
 	if (!resolve_chat())
+		return;
+
+	if (!resolve_db_pool())
 		return;
 
 	if (!resolve_pk())
