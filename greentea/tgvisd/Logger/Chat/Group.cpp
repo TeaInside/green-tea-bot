@@ -18,12 +18,10 @@ struct chat_data {
 	td_api::object_ptr<td_api::supergroup>		sgroup_;
 	td_api::object_ptr<td_api::supergroupFullInfo>	sgroup_full_;
 
-	inline chat_data(const td_api::chat &chat,
-			 td_api::object_ptr<td_api::supergroup> sgroup,
-			 td_api::object_ptr<td_api::supergroupFullInfo> sgroup_full):
-		chat_(chat),
-		sgroup_(std::move(sgroup)),
-		sgroup_full_(std::move(sgroup_full))
+	inline ~chat_data(void) = default;
+
+	inline chat_data(const td_api::chat &chat):
+		chat_(chat)
 	{
 	}
 };
@@ -447,8 +445,8 @@ out:
 	return pk_chat_id;
 }
 
-static struct chat_data *get_chat_data(KWorker *kworker,
-				       const td_api::chat &chat)
+static bool get_chat_data(KWorker *kworker, const td_api::chat &chat,
+			  struct chat_data *cd)
 {
 	tgvisd::Td::Td *td;
 	const uint32_t timeout = 60;
@@ -459,45 +457,38 @@ static struct chat_data *get_chat_data(KWorker *kworker,
 	td = kworker->getTd();
 	assert(td);
 
-	auto sgroup = td->send_query_sync<td_api::getSupergroup, td_api::supergroup>(
+	cd->sgroup_ = td->send_query_sync<td_api::getSupergroup, td_api::supergroup>(
 		td_api::make_object<td_api::getSupergroup>(supergroup_id),
 		timeout
 	);
-	if (unlikely(!sgroup))
-		return nullptr;
+	if (unlikely(!cd->sgroup_))
+		return false;
 
-	auto sgroup_full = td->send_query_sync<td_api::getSupergroupFullInfo, td_api::supergroupFullInfo>(
+	cd->sgroup_full_ = td->send_query_sync<td_api::getSupergroupFullInfo, td_api::supergroupFullInfo>(
 		td_api::make_object<td_api::getSupergroupFullInfo>(supergroup_id),
 		timeout
 	);
-	if (unlikely(!sgroup_full))
-		return nullptr;
+	if (unlikely(!cd->sgroup_full_))
+		return false;
 
-	return new struct chat_data(chat, std::move(sgroup),
-				    std::move(sgroup_full));
+	return true;
 }
 
 uint64_t Group::getPK(void)
 {
 	mysql::MySQL *db;
-	uint64_t pk_chat_id;
-	struct chat_data *cd;
+	struct chat_data cd(chat_);
 
-	cd = get_chat_data(kworker_, chat_);
-	if (unlikely(!cd)) {
+	if (unlikely(!get_chat_data(kworker_, chat_, &cd))) {
 		pr_err("Cannot get chat data on getPK");
 		return 0;
 	}
 
 	db = getDbPool();
-	if (unlikely(!db)) {
-		delete cd;
+	if (unlikely(!db))
 		return 0;
-	}
 
-	pk_chat_id = get_chat_pk(db, cd);
-	delete cd;
-	return pk_chat_id;
+	return get_chat_pk(db, &cd);
 }
 
 } /* namespace tgvisd::Logger::Chat */
