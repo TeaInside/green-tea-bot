@@ -263,7 +263,7 @@ static uint64_t create_user(mysql::MySQL *db, struct user_data *ud)
 			   (void *) userFull.bio_.c_str(),
 			   userFull.bio_.size());
 
-	switch (ud->sender_.get_id()) {
+	switch (ud->user_->type_->get_id()) {
 	case td_api::userTypeBot::ID:
 		user_type = "bot";
 		user_type_len = sizeof("bot") - 1;
