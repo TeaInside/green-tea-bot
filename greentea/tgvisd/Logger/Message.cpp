@@ -34,6 +34,11 @@ Message::~Message(void)
 		delete m_chat_;
 		m_chat_ = nullptr;
 	}
+
+	if (db_) {
+		kworker_->putDbPool(db_);
+		db_ = nullptr;
+	}
 }
 
 bool Message::resolve_chat(void)
