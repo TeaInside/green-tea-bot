@@ -1,4 +1,3 @@
-
 SET NAMES utf8;
 SET time_zone = '+00:00';
 SET foreign_key_checks = 0;
@@ -48,6 +47,11 @@ CREATE TABLE `gt_groups` (
   `username` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `link` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci,
+  `has_linked_chat` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
+  `is_slow_mode_enabled` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
+  `is_channel` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
+  `is_verified` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
   `created_at` datetime NOT NULL,
   `updated_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
@@ -55,8 +59,13 @@ CREATE TABLE `gt_groups` (
   KEY `username` (`username`),
   KEY `link` (`link`),
   KEY `name` (`name`),
+  KEY `has_linked_chat` (`has_linked_chat`),
+  KEY `is_slow_mode_enabled` (`is_slow_mode_enabled`),
+  KEY `is_channel` (`is_channel`),
+  KEY `is_verified` (`is_verified`),
   KEY `created_at` (`created_at`),
-  KEY `updated_at` (`updated_at`)
+  KEY `updated_at` (`updated_at`),
+  FULLTEXT KEY `description` (`description`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
@@ -67,6 +76,11 @@ CREATE TABLE `gt_groups_history` (
   `username` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `link` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci,
+  `has_linked_chat` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
+  `is_slow_mode_enabled` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
+  `is_channel` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
+  `is_verified` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
   `created_at` datetime NOT NULL,
   PRIMARY KEY (`id`),
   KEY `username` (`username`),
@@ -75,6 +89,48 @@ CREATE TABLE `gt_groups_history` (
   KEY `created_at` (`created_at`),
   KEY `group_id` (`group_id`),
   CONSTRAINT `gt_groups_history_ibfk_2` FOREIGN KEY (`group_id`) REFERENCES `gt_groups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+
+DROP TABLE IF EXISTS `gt_message_content`;
+CREATE TABLE `gt_message_content` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `message_id` bigint unsigned NOT NULL,
+  `text` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci,
+  `text_entities` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci,
+  `is_edited_msg` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `tg_date` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `message_id` (`message_id`),
+  KEY `is_edited_msg` (`is_edited_msg`),
+  KEY `tg_date` (`tg_date`),
+  KEY `created_at` (`created_at`),
+  FULLTEXT KEY `text` (`text`),
+  CONSTRAINT `gt_message_content_ibfk_2` FOREIGN KEY (`message_id`) REFERENCES `gt_messages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+
+DROP TABLE IF EXISTS `gt_message_fwd_info`;
+CREATE TABLE `gt_message_fwd_info` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `message_id` bigint unsigned NOT NULL,
+  `user_id` bigint unsigned DEFAULT NULL,
+  `sender_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `tg_date` datetime NOT NULL,
+  `public_service_announcement_type_` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `chat_id` bigint unsigned DEFAULT NULL,
+  `tg_msg_id` bigint unsigned DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sender_name` (`sender_name`),
+  KEY `tg_date` (`tg_date`),
+  KEY `message_id` (`message_id`),
+  KEY `user_id` (`user_id`),
+  KEY `chat_id` (`chat_id`),
+  KEY `tg_msg_id` (`tg_msg_id`),
+  CONSTRAINT `gt_message_fwd_info_ibfk_4` FOREIGN KEY (`user_id`) REFERENCES `gt_users` (`id`) ON DELETE CASCADE ON UPDATE SET NULL,
+  CONSTRAINT `gt_message_fwd_info_ibfk_6` FOREIGN KEY (`chat_id`) REFERENCES `gt_chats` (`id`) ON DELETE CASCADE ON UPDATE SET NULL,
+  CONSTRAINT `gt_message_fwd_info_ibfk_8` FOREIGN KEY (`message_id`) REFERENCES `gt_messages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
@@ -153,6 +209,7 @@ CREATE TABLE `gt_users` (
   `is_verified` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
   `is_support` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
   `is_scam` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
+  `bio` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
   `type` enum('bot','deleted','user','unknown') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'unknown',
   `created_at` datetime NOT NULL,
   `updated_at` datetime DEFAULT NULL,
@@ -167,7 +224,8 @@ CREATE TABLE `gt_users` (
   KEY `is_scam` (`is_scam`),
   KEY `type` (`type`),
   KEY `created_at` (`created_at`),
-  KEY `updated_at` (`updated_at`)
+  KEY `updated_at` (`updated_at`),
+  FULLTEXT KEY `bio` (`bio`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
@@ -182,6 +240,8 @@ CREATE TABLE `gt_users_history` (
   `is_verified` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
   `is_support` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
   `is_scam` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0',
+  `bio` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci,
+  `type` enum('bot','deleted','user','unknown') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci DEFAULT 'unknown',
   `created_at` datetime NOT NULL,
   PRIMARY KEY (`id`),
   KEY `gt_user_id` (`user_id`),
@@ -193,5 +253,7 @@ CREATE TABLE `gt_users_history` (
   KEY `is_support` (`is_support`),
   KEY `is_scam` (`is_scam`),
   KEY `created_at` (`created_at`),
+  KEY `type` (`type`),
+  FULLTEXT KEY `bio` (`bio`),
   CONSTRAINT `gt_users_history_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `gt_users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
