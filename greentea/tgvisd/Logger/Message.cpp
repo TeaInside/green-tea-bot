@@ -124,12 +124,21 @@ bool Message::resolve_sender(void)
 
 bool Message::resolve_db_pool(void)
 {
-	db_ = kworker_->getDbPool();
-	if (unlikely(!db_))
-		return false;
+	const uint32_t max_try = 32;
+	uint32_t try_num = 0;
 
 	assert(m_chat_);
 	assert(m_sender_);
+
+	db_ = kworker_->getDbPool();
+	while (unlikely(!db_)) {
+		if (unlikely(++try_num >= max_try))
+			return false;
+
+		sleep(1);
+		db_ = kworker_->getDbPool();
+	}
+
 	m_chat_->setDbPool(db_);
 	m_sender_->setDbPool(db_);
 	return true;
