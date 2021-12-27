@@ -8,6 +8,7 @@
 
 use GreenTea\API\GetGroupList;
 use GreenTea\API\GetChatMessages;
+use GreenTea\API\RegisterAccount;
 
 $msg  = NULL;
 $code = 200;
@@ -67,6 +68,12 @@ try {
 		}
 
 		$msg = $api->get(...$arg);
+		if ($api->isError())
+			$code = $api->getErrorCode();
+		break;
+	case "register":
+		$api = new RegisterAccount();
+		$msg = $api->register();
 		if ($api->isError())
 			$code = $api->getErrorCode();
 		break;
