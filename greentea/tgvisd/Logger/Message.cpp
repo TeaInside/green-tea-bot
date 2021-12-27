@@ -301,6 +301,7 @@ stmt_err:
 	mysql_handle_stmt_err(stmtErrFunc, stmt);
 	pk_message_content_id = 0;
 out:
+	delete stmt;
 	return pk_message_content_id;
 }
 
