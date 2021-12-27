@@ -7,6 +7,7 @@
  */
 
 use GreenTea\API\GetGroupList;
+use GreenTea\API\GetChatMessages;
 
 $msg  = NULL;
 $code = 200;
@@ -40,6 +41,29 @@ try {
 			if (!isset($arg[0]))
 				$arg[0] = 100;
 			$arg[1] = (int) $_GET["offset"];
+		}
+
+		$msg = $api->get(...$arg);
+		if ($api->isError())
+			$code = $api->getErrorCode();
+		break;
+	case "get_chat_messages":
+		if (!isset($_GET["group_id"]) || !is_string($_GET["group_id"])) {
+			$msg  = "Missing \"group_id\" parameter";
+			$code = 400;
+			goto out;
+		}
+
+		$api = new GetChatMessages();
+		$arg = [$_GET["group_id"]];
+
+		if (isset($_GET["limit"]) && is_numeric($_GET["limit"]))
+			$arg[1] = (int) $_GET["limit"];
+
+		if (isset($_GET["offset"]) && is_numeric($_GET["offset"])) {
+			if (!isset($arg[1]))
+				$arg[1] = 100;
+			$arg[2] = (int) $_GET["offset"];
 		}
 
 		$msg = $api->get(...$arg);
