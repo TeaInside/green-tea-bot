@@ -7,9 +7,11 @@
  * Copyright (C) 2021 Ammar Faizi <ammarfaizi2@gmail.com>
  */
 
+#include <iostream>
 #include <tgvisd/Main.hpp>
 #include <tgvisd/KWorker.hpp>
 #include <tgvisd/Scraper.hpp>
+#include <tgvisd/Logger/Message.hpp>
 
 #if defined(__linux__)
 	#include <signal.h>
@@ -41,6 +43,17 @@ __cold Main::Main(uint32_t api_id, const char *api_hash, const char *data_path):
 		this->scraper_->run();
 	});
 	Scraper::setThreadName(scraperThread_);
+
+	td_.callback.updateNewMessage = [this](td_api::updateNewMessage &u){
+		std::cout << "Get a new message" << std::endl;
+		std::thread tr([this, u = std::move(u)](){
+			tgvisd::Logger::Message *msg;
+			msg = new tgvisd::Logger::Message(kworker_, *u.message_);
+			msg->save();
+			delete msg;
+		});
+		tr.detach();
+	};
 }
 
 

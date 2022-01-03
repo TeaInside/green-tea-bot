@@ -25,6 +25,7 @@
 #include <tgvisd/common.hpp>
 #include <tgvisd/KWorker.hpp>
 #include <tgvisd/Scraper.hpp>
+#include <tgvisd/Logger/Message.hpp>
 
 
 namespace tgvisd {
@@ -97,7 +98,7 @@ out:
 
 __hot void Scraper::_run(void)
 {
-	int32_t i;
+	int32_t i, j;
 	int64_t chat_id;
 
 	pr_notice("Getting chat list...");
@@ -110,16 +111,21 @@ __hot void Scraper::_run(void)
 			break;
 
 		chat_id = chats->chat_ids_[i];
-		auto chat = kworker_->getChat(chat_id);
+		pr_notice("Scraping %ld...", chat_id);
+		for (j = 0; j < 5; j++) {
+			auto chat = kworker_->getChat(chat_id);
 
-		if (unlikely(!chat))
-			continue;
+			if (unlikely(!chat))
+				continue;
 
-		if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID)
-			continue;
+			if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID)
+				continue;
 
-		pr_notice("Submitting visit to %ld...", chat_id);
-		visit_chat(chat);
+			if (shouldStop())
+				return;
+			visit_chat(chat);
+		}
+		sleep(1);
 	}
 }
 
@@ -171,6 +177,10 @@ __hot void Scraper::_visit_chat(struct tw_data *data,
 	int32_t count, i;
 	struct thpool *current = data->current;
 	std::mutex *chat_lock;
+	int64_t startMsgId = 0;
+	td_api::object_ptr<td_api::error> err;
+	static std::mutex startMsgIdMapLock;
+	static std::unordered_map<int64_t, int64_t> startMsgIdMap;
 
 	pr_notice("Scraping messages from (%ld) [%s]...", chat->id_,
 		  chat->title_.c_str());
@@ -182,16 +192,33 @@ __hot void Scraper::_visit_chat(struct tw_data *data,
 		return;
 	}
 
-	auto messages = kworker_->getChatHistory(chat->id_, 0, 0, 300);
+	startMsgIdMapLock.lock();
+	const auto &it = startMsgIdMap.find(chat->id_);
+	if (it != startMsgIdMap.end()) {
+		startMsgId = startMsgIdMap[chat->id_];
+		startMsgIdMap[chat->id_] += 50;
+	} else {
+		startMsgIdMap[chat->id_] = 1;
+	}
+	startMsgIdMapLock.unlock();
+
+	pr_notice("Scraping %ld with startMsgId = %ld", chat->id_, startMsgId);
+
+	auto messages = kworker_->getChatHistory(chat->id_,
+						 startMsgId << 20u, -10, 100,
+						 false, &err);
 	if (unlikely(!messages)) {
-		pr_notice("Could not get message history from (%ld) [%s]",
-			  chat->id_, chat->title_.c_str());
+		pr_notice("Could not get message history from (%ld) [%s]: %s",
+			  chat->id_, chat->title_.c_str(),
+			  err ? to_string(err).c_str() : "no err info");
 		return;
 	}
 
 	count = messages->total_count_;
 	current->setInterruptible();
 	for (i = 0; i < count; i++) {
+		tgvisd::Logger::Message *m_msg;
+
 		if (shouldStop())
 			break;
 
@@ -200,7 +227,12 @@ __hot void Scraper::_visit_chat(struct tw_data *data,
 			continue;
 
 		current->setUninterruptible();
-		save_message(msg, &chat, chat_lock);
+		m_msg = new tgvisd::Logger::Message(kworker_, *msg);
+		m_msg->set_chat(std::move(chat));
+		m_msg->set_chat_lock(chat_lock);
+		m_msg->save();
+		chat = m_msg->get_chat();
+		delete m_msg;
 		current->setInterruptible();
 	}
 }
@@ -213,14 +245,14 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	uint64_t pk_gid, pk_uid, pk_mid;
 	td_api::object_ptr<td_api::chat> chat2 = nullptr;
 
-	if (unlikely(!msg->sender_)) {
+	if (unlikely(!msg->sender_id_)) {
 		pr_notice("save_message(): Ignoring message, as it does not "
 			  "have a sender (%ld) [%s]", (*chat)->id_,
 			  (*chat)->title_.c_str());
 		return;
 	}
 
-	if (unlikely(msg->sender_->get_id() != td_api::messageSenderUser::ID)) {
+	if (unlikely(msg->sender_id_->get_id() != td_api::messageSenderUser::ID)) {
 		pr_notice("save_message(): Ignoring message, as it is not sent "
 			  "by messageSenderUser object (%ld) [%s]",
 			  (*chat)->id_, (*chat)->title_.c_str());
@@ -255,7 +287,7 @@ __hot void Scraper::save_message(td_api::object_ptr<td_api::message> &msg,
 	}
 
 
-	auto sender = td::move_tl_object_as<td_api::messageSenderUser>(msg->sender_);
+	auto sender = td::move_tl_object_as<td_api::messageSenderUser>(msg->sender_id_);
 	pk_uid = touch_user_with_uid(sender->user_id_);
 	if (unlikely(pk_uid == 0)) {
 		pr_err("save_message(): Ignoring message, could not get pk_uid "

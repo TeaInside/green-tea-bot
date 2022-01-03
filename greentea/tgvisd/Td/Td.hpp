@@ -80,7 +80,6 @@ private:
 
 	int64_t user_id_ = 0;
 	int64_t client_id_ = 0;
-	Callback callback;
 	unique_ptr<td::ClientManager> client_manager_;
 	td_api::object_ptr<td_api::AuthorizationState> authorization_state_;
 
@@ -111,6 +110,8 @@ private:
 	function<void(Object object)> create_authentication_query_handler(void);
 
 public:
+	Callback callback;
+
 	Td(uint32_t api_id, const char *api_hash, const char *data_path);
 	~Td(void) = default;
 
