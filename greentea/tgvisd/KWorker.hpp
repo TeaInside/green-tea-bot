@@ -133,7 +133,7 @@ public:
 
 
 	KWorker(Main *main, uint32_t maxThPool = 16, uint32_t maxDbPool = 256,
-		uint32_t maxNRTasks = 4096);
+		uint32_t maxNRTasks = 32);
 	int submitTaskWork(struct task_work *tw);
 	mysql::MySQL *getDbPool(void);
 	void putDbPool(mysql::MySQL *db);
@@ -221,7 +221,8 @@ public:
 				int64_t from_msg_id,
 				int32_t offset,
 				int32_t limit,
-				bool only_local = false)
+				bool only_local = false,
+				td_api::object_ptr<td_api::error> *err = nullptr)
 	{
 		return td_->send_query_sync<td_api::getChatHistory, td_api::messages>(
 			td_api::make_object<td_api::getChatHistory>(
@@ -231,7 +232,8 @@ public:
 				limit,
 				only_local
 			),
-			query_sync_timeout
+			query_sync_timeout,
+			err
 		);
 	}
 
