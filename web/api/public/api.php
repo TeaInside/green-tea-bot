@@ -10,6 +10,12 @@ use GreenTea\API\GetGroupList;
 use GreenTea\API\GetChatMessages;
 use GreenTea\API\RegisterAccount;
 
+if (isset($_SERVER["HTTP_ORIGIN"]) && is_string($_SERVER["HTTP_ORIGIN"])) {
+	header("Access-Control-Allow-Origin: {$_SERVER["HTTP_ORIGIN"]}");
+} else {
+	header("Access-Control-Allow-Origin: *");
+}
+
 $msg  = NULL;
 $code = 200;
 
