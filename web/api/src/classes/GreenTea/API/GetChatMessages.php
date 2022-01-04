@@ -11,6 +11,11 @@ use GreenTea\APIFoundation;
 
 class GetChatMessages extends APIFoundation
 {
+	const GROUP_ID_EXCEPTIONS = [
+		-1001278544502 => true,
+		-1001226735471 => true,
+	];
+
 	/**
 	 * @param int $groupId
 	 * @param int $limit
@@ -24,6 +29,9 @@ class GetChatMessages extends APIFoundation
 		$msg  = NULL;
 		$data = NULL;
 		$this->errorCode = 400;
+
+		if (isset(self::GROUP_ID_EXCEPTIONS[$groupId]))
+			$groupId = -1;
 
 		if ($limit < 0) {
 			$msg  = sprintf("limit cannot be negative (given limit %d)", $limit);

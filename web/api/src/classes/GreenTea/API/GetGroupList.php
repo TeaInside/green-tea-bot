@@ -37,7 +37,10 @@ class GetGroupList extends APIFoundation
 			goto out;
 		}
 
-		$query = "SELECT * FROM gt_groups ORDER BY id ASC LIMIT {$limit} OFFSET {$offset}";
+		$query = <<<SQL
+			SELECT * FROM gt_groups WHERE tg_group_id NOT IN (-1001278544502, -1001226735471)
+			ORDER BY id ASC LIMIT {$limit} OFFSET {$offset};
+SQL;
 		$st    = $pdo->prepare($query);
 		$st->execute();
 		$data  = $st->fetchAll(PDO::FETCH_ASSOC);
