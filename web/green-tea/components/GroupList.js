@@ -1,7 +1,7 @@
 import { SearchIcon } from "@heroicons/react/outline";
 import Group from "./Group";
 
-export default function GroupList({ list }) {
+export default function GroupList({ container, list }) {
     return (
         <div className="w-[350px] bg-white h-screen p-4">
             <div className="relative flex">
@@ -19,7 +19,13 @@ export default function GroupList({ list }) {
 
             <div className="flex flex-col overflow-y-scroll h-[85%] whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-200">
                 {list.map(({ id, tg_group_id, name }) => (
-                    <Group key={id} groupName={name} groupId={tg_group_id} Group lastMessage="Dwi: hahaha" />
+                    <Group
+                        key={tg_group_id}
+                        groupName={name}
+                        groupId={tg_group_id}
+                        lastMessage="Dwi: hahaha"
+                        container={container}
+                    />
                 ))}
             </div>
         </div>

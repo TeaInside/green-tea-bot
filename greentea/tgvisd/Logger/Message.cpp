@@ -91,7 +91,7 @@ bool Message::resolve_chat(void)
 bool Message::resolve_sender(void)
 {
 	int64_t lock_id;
-	const auto &s = message_.sender_;
+	const auto &s = message_.sender_id_;
 
 	switch (s->get_id()) {
 	case td_api::messageSenderUser::ID:
