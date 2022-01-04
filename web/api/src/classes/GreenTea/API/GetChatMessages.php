@@ -39,31 +39,35 @@ class GetChatMessages extends APIFoundation
 		}
 
 		$query = <<<SQL
-		SELECT
-			gt_messages.id,
-			gt_users.tg_user_id,
-			gt_users.first_name,
-			gt_users.last_name,
-			gt_users.username,
-			gt_messages.tg_msg_id,
-			gt_messages.reply_to_tg_msg_id,
-			gt_message_content.text,
-			gt_messages.msg_type,
-			gt_messages.has_edited_msg,
-			gt_messages.is_forwarded_msg,
-			gt_messages.is_deleted,
-			gt_messages.created_at
-		FROM gt_messages INNER JOIN gt_message_content
-		ON gt_messages.id = gt_message_content.message_id INNER JOIN gt_senders
-		ON gt_senders.id = gt_messages.sender_id INNER JOIN gt_sender_user
-		ON gt_senders.id = gt_sender_user.sender_id INNER JOIN gt_users
-		ON gt_users.id = gt_sender_user.user_id INNER JOIN gt_chats
-		ON gt_chats.id = gt_messages.chat_id INNER JOIN gt_chat_group
-		ON gt_chats.id = gt_chat_group.chat_id INNER JOIN gt_groups
-		ON gt_groups.id = gt_chat_group.group_id
-		WHERE gt_groups.tg_group_id = ?
-		ORDER BY gt_message_content.tg_date DESC
-		LIMIT {$limit} OFFSET {$offset};
+		SELECT * FROM (
+			SELECT
+				gt_messages.id,
+				gt_users.tg_user_id,
+				gt_users.first_name,
+				gt_users.last_name,
+				gt_users.username,
+				gt_messages.tg_msg_id,
+				gt_messages.reply_to_tg_msg_id,
+				gt_message_content.text,
+				gt_messages.msg_type,
+				gt_messages.has_edited_msg,
+				gt_messages.is_forwarded_msg,
+				gt_messages.is_deleted,
+				gt_message_content.tg_date
+			FROM gt_messages
+			INNER JOIN gt_message_content ON gt_messages.id = gt_message_content.message_id
+			INNER JOIN gt_senders ON gt_senders.id = gt_messages.sender_id
+			INNER JOIN gt_sender_user ON gt_senders.id = gt_sender_user.sender_id
+			INNER JOIN gt_users ON gt_users.id = gt_sender_user.user_id
+			INNER JOIN gt_chats ON gt_chats.id = gt_messages.chat_id
+			WHERE gt_chats.id = (
+				SELECT gt_chat_group.chat_id FROM gt_chat_group
+				INNER JOIN gt_groups ON gt_groups.id = gt_chat_group.group_id
+				WHERE gt_groups.tg_group_id = ? LIMIT 1
+			)
+			ORDER BY gt_message_content.tg_date DESC
+			LIMIT {$limit} OFFSET {$offset}
+		) tmp ORDER BY tg_date ASC;
 SQL;
 		$st    = $pdo->prepare($query);
 		$st->execute([$groupId]);
