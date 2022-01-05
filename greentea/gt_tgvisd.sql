@@ -113,29 +113,6 @@ CREATE TABLE `gt_message_content` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
-DROP TABLE IF EXISTS `gt_message_fwd_info`;
-CREATE TABLE `gt_message_fwd_info` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `message_id` bigint unsigned NOT NULL,
-  `user_id` bigint unsigned DEFAULT NULL,
-  `sender_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
-  `tg_date` datetime NOT NULL,
-  `public_service_announcement_type_` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
-  `chat_id` bigint unsigned DEFAULT NULL,
-  `tg_msg_id` bigint unsigned DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `sender_name` (`sender_name`),
-  KEY `tg_date` (`tg_date`),
-  KEY `message_id` (`message_id`),
-  KEY `user_id` (`user_id`),
-  KEY `chat_id` (`chat_id`),
-  KEY `tg_msg_id` (`tg_msg_id`),
-  CONSTRAINT `gt_message_fwd_info_ibfk_4` FOREIGN KEY (`user_id`) REFERENCES `gt_users` (`id`) ON DELETE CASCADE ON UPDATE SET NULL,
-  CONSTRAINT `gt_message_fwd_info_ibfk_6` FOREIGN KEY (`chat_id`) REFERENCES `gt_chats` (`id`) ON DELETE CASCADE ON UPDATE SET NULL,
-  CONSTRAINT `gt_message_fwd_info_ibfk_8` FOREIGN KEY (`message_id`) REFERENCES `gt_messages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
-
-
 DROP TABLE IF EXISTS `gt_messages`;
 CREATE TABLE `gt_messages` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -162,6 +139,28 @@ CREATE TABLE `gt_messages` (
   KEY `sender_id` (`sender_id`),
   CONSTRAINT `gt_messages_ibfk_4` FOREIGN KEY (`chat_id`) REFERENCES `gt_chats` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `gt_messages_ibfk_6` FOREIGN KEY (`sender_id`) REFERENCES `gt_senders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+
+DROP TABLE IF EXISTS `gt_msg_fwd_info`;
+CREATE TABLE `gt_msg_fwd_info` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `message_id` bigint unsigned NOT NULL,
+  `sender_id` bigint unsigned DEFAULT NULL,
+  `tg_date` datetime DEFAULT NULL,
+  `public_service_announcement_type` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci,
+  `from_tg_chat_id` bigint unsigned DEFAULT NULL,
+  `from_tg_msg_id` bigint unsigned DEFAULT NULL,
+  `sender_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `author_signature` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `extra` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`id`),
+  KEY `message_id` (`message_id`),
+  KEY `from_chat_id` (`from_tg_chat_id`),
+  KEY `sender_id` (`sender_id`),
+  KEY `tg_date` (`tg_date`),
+  CONSTRAINT `gt_msg_fwd_info_ibfk_4` FOREIGN KEY (`message_id`) REFERENCES `gt_messages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `gt_msg_fwd_info_ibfk_6` FOREIGN KEY (`sender_id`) REFERENCES `gt_senders` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
@@ -279,4 +278,4 @@ CREATE TABLE `telegram_sso` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
--- 2022-01-05 12:45:42
+-- 2022-01-05 15:48:42

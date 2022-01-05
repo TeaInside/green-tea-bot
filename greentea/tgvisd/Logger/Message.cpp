@@ -5,6 +5,7 @@
  * @package tgvisd::Logger
  *
  * Copyright (C) 2021  Alviro Iskandar Setiawan <alviro.iskandar@gmail.com>
+ * Copyright (C) 2022  Ammar Faizi <ammarfaizi2@gmail.com>
  */
 
 #include <time.h>
@@ -172,7 +173,7 @@ bool Message::resolve_pk(void)
 	return true;
 }
 
-static uint64_t save_message_if_not_exist(mysql::MySQL *db,
+static uint64_t save_message_if_not_exist(KWorker *kwrk, mysql::MySQL *db,
 					  const td_api::message &message,
 					  uint64_t pk_chat_id,
 					  uint64_t pk_sender_id);
@@ -202,7 +203,8 @@ void Message::save(void)
 		return;
 
 	chat_lock_->lock();
-	save_message_if_not_exist(db_, message_, pk_chat_id_, pk_sender_id_);
+	save_message_if_not_exist(kworker_, db_, message_, pk_chat_id_,
+				  pk_sender_id_);
 	chat_lock_->unlock();
 }
 
@@ -314,7 +316,200 @@ out:
 	return pk_message_content_id;
 }
 
-static uint64_t create_message(mysql::MySQL *db, const td_api::message &message,
+static uint64_t save_msg_fwd_info(KWorker *kwrk, mysql::MySQL *db,
+				  const td_api::messageForwardInfo &mfi,
+				  uint64_t pk_chat_id)
+{
+	char tg_date[64];
+	size_t tg_date_size;
+	uint64_t pk_msg_fwd_info_id = 0;
+	mysql::MySQLStmt *stmt = nullptr;
+	const char *stmtErrFunc = nullptr;
+	union {
+		uint64_t sender_id;
+	} p;
+
+	enum {
+		f_message_id = 0,
+		f_sender_id = 1,
+		f_tg_date = 2,
+		f_public_service_announcement_type = 3,
+		f_from_tg_chat_id = 4,
+		f_from_tg_msg_id = 5,
+		f_sender_name = 6,
+		f_author_signature = 7,
+		f_extra = 8
+	};
+
+	std::string extra = "";
+	const auto &origin = *mfi.origin_;
+	const auto obj_id = origin.get_id();
+	const std::string &psat = mfi.public_service_announcement_type_;
+
+	stmt = db->prepare(9,
+		"INSERT INTO `gt_msg_fwd_info`"
+		"("
+			"`message_id`,"
+			"`sender_id`,"
+			"`tg_date`,"
+			"`public_service_announcement_type`,"
+			"`from_tg_chat_id`,"
+			"`from_tg_msg_id`,"
+			"`sender_name`,"
+			"`author_signature`,"
+			"`extra`"
+		")"
+			" VALUES "
+		"("
+			"?,"
+			"?,"
+			"?,"
+			"?,"
+			"?,"
+			"?,"
+			"?,"
+			"?,"
+			"?"
+		");"
+	);
+
+	if (MYSQL_IS_ERR_OR_NULL<mysql::MySQLStmt>(stmt)) {
+		mysql_handle_prepare_err(db, stmt);
+		return 0;
+	}
+
+	if (unlikely(stmt->stmtInit())) {
+		stmtErrFunc = "stmtInit";
+		goto stmt_err;
+	}
+
+	stmt->bind(f_message_id, MYSQL_TYPE_LONGLONG, (void *) &pk_chat_id,
+		   sizeof(pk_chat_id));
+
+	tg_date_size = convert_epoch_to_db_format(tg_date, sizeof(tg_date),
+						  (time_t) mfi.date_);
+
+	if (tg_date_size)
+		stmt->bind(f_tg_date, MYSQL_TYPE_STRING, tg_date, tg_date_size);
+	else
+		stmt->bind(f_tg_date, MYSQL_TYPE_NULL, NULL, 0);
+
+	if (psat.size())
+		stmt->bind(f_public_service_announcement_type,
+			   MYSQL_TYPE_STRING, (void *) psat.c_str(),
+			   psat.size());
+	else
+		stmt->bind(f_public_service_announcement_type, MYSQL_TYPE_NULL,
+			   NULL, 0);
+
+	if (mfi.from_chat_id_)
+		stmt->bind(f_from_tg_chat_id,
+			   MYSQL_TYPE_LONGLONG, (void *) &mfi.from_chat_id_,
+			   sizeof(mfi.from_chat_id_));
+	else
+		stmt->bind(f_from_tg_chat_id, MYSQL_TYPE_NULL, NULL, 0);
+
+	if (mfi.from_message_id_)
+		stmt->bind(f_from_tg_msg_id,
+			   MYSQL_TYPE_LONGLONG, (void *) &mfi.from_message_id_,
+			   sizeof(mfi.from_message_id_));
+	else
+		stmt->bind(f_from_tg_msg_id, MYSQL_TYPE_NULL, NULL, 0);
+
+
+	if (obj_id == td_api::messageForwardOriginUser::ID) {
+		auto &tmp1 = static_cast<const td_api::messageForwardOriginUser &>(origin);
+		auto tmp2  = td_api::messageSenderUser(tmp1.sender_user_id_);
+		auto tmp3  = SenderUser(kwrk, tmp2);
+		tmp3.setDbPool(db);
+		p.sender_id = tmp3.getPK();
+		if (unlikely(!p.sender_id)) {
+			pr_err("Cannot get sender_id in save_msg_fwd_info");
+			stmt->bind(f_sender_id, MYSQL_TYPE_NULL, NULL, 0);
+		} else {
+			stmt->bind(f_sender_id, MYSQL_TYPE_LONGLONG,
+				   (void *) &p.sender_id, sizeof(p.sender_id));
+		}
+		stmt->bind(f_sender_name, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_author_signature, MYSQL_TYPE_NULL, NULL, 0);
+
+	} else if (obj_id == td_api::messageForwardOriginChannel::ID) {
+		auto &tmp1 = static_cast<const td_api::messageForwardOriginChannel &>(origin);
+		const std::string &tmp2 = tmp1.author_signature_;
+		extra = to_string(tmp1);
+
+		/* TODO: Handle chat sender. */
+		stmt->bind(f_sender_id, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_sender_name, MYSQL_TYPE_NULL, NULL, 0);
+		if (tmp2.size())
+			stmt->bind(f_author_signature, MYSQL_TYPE_STRING,
+				   (void *) tmp2.c_str(), tmp2.size());
+		else
+			stmt->bind(f_author_signature, MYSQL_TYPE_NULL, NULL, 0);
+
+	} else if (obj_id == td_api::messageForwardOriginChat::ID) {
+		auto &tmp1 = static_cast<const td_api::messageForwardOriginChat &>(origin);
+		extra = to_string(tmp1);
+
+		/* TODO: Handle chat sender. */
+		stmt->bind(f_sender_id, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_sender_name, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_author_signature, MYSQL_TYPE_NULL, NULL, 0);
+
+	} else if (obj_id == td_api::messageForwardOriginHiddenUser::ID) {
+		auto &tmp1 = static_cast<const td_api::messageForwardOriginHiddenUser &>(origin);
+
+		stmt->bind(f_sender_id, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_sender_name, MYSQL_TYPE_STRING,
+			   (void *)tmp1.sender_name_.c_str(),
+			   tmp1.sender_name_.size());
+		stmt->bind(f_author_signature, MYSQL_TYPE_NULL, NULL, 0);
+
+	} else if (obj_id == td_api::messageForwardOriginMessageImport::ID) {
+		auto &tmp1 = static_cast<const td_api::messageForwardOriginMessageImport &>(origin);
+		extra = to_string(tmp1);
+
+		/* TODO: Handle chat sender. */
+		stmt->bind(f_sender_id, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_sender_name, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_author_signature, MYSQL_TYPE_NULL, NULL, 0);
+	} else {
+		extra = "unknown_type";
+		/* TODO: Handle chat sender. */
+		stmt->bind(f_sender_id, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_sender_name, MYSQL_TYPE_NULL, NULL, 0);
+		stmt->bind(f_author_signature, MYSQL_TYPE_NULL, NULL, 0);
+	}
+
+	if (extra.size())
+		stmt->bind(f_extra, MYSQL_TYPE_STRING, (void *) extra.c_str(),
+			   extra.size());
+	else
+		stmt->bind(f_extra, MYSQL_TYPE_NULL, NULL, 0);
+
+	if (unlikely(stmt->bindStmt())) {
+		stmtErrFunc = "bindStmt";
+		goto stmt_err;
+	}
+
+	if (unlikely(stmt->execute())) {
+		stmtErrFunc = "execute";
+		goto stmt_err;
+	}
+
+	pk_msg_fwd_info_id = stmt->getInsertId();
+	goto out;
+
+stmt_err:
+	mysql_handle_stmt_err(stmtErrFunc, stmt);
+	pk_msg_fwd_info_id = 0;
+out:
+	delete stmt;
+	return pk_msg_fwd_info_id;
+}
+
+static uint64_t create_message(KWorker *kwrk, mysql::MySQL *db,
+			       const td_api::message &message,
 			       uint64_t pk_chat_id, uint64_t pk_sender_id)
 {
 	uint64_t tg_msg_id;
@@ -397,8 +592,18 @@ static uint64_t create_message(mysql::MySQL *db, const td_api::message &message,
 
 	pk_message_id = stmt->getInsertId();
 
+	if (message.forward_info_) {
+		if (unlikely(!save_msg_fwd_info(kwrk, db,
+						*message.forward_info_,
+						pk_message_id))) {
+			pk_message_id = 0;
+			goto out;
+		}
+	}
+
 	if (unlikely(!create_message_content(db, message, pk_message_id)))
 		pk_message_id = 0;
+
 	goto out;
 
 stmt_err:
@@ -409,7 +614,8 @@ out:
 	return pk_message_id;
 }
 
-static uint64_t get_message_pk(mysql::MySQL *db, const td_api::message &message,
+static uint64_t get_message_pk(KWorker *kwrk, mysql::MySQL *db,
+			       const td_api::message &message,
 			       uint64_t pk_chat_id, uint64_t pk_sender_id)
 {
 	static const char q[] =
@@ -440,7 +646,7 @@ static uint64_t get_message_pk(mysql::MySQL *db, const td_api::message &message,
 
 	row = res->fetchRow();
 	if (!row) {
-		pk_message_id = create_message(db, message, pk_chat_id,
+		pk_message_id = create_message(kwrk, db, message, pk_chat_id,
 					       pk_sender_id);
 		goto out;
 	}
@@ -451,7 +657,7 @@ out:
 	return pk_message_id;
 }
 
-static uint64_t save_message_if_not_exist(mysql::MySQL *db,
+static uint64_t save_message_if_not_exist(KWorker *kwrk, mysql::MySQL *db,
 					  const td_api::message &message,
 					  uint64_t pk_chat_id,
 					  uint64_t pk_sender_id)
@@ -465,7 +671,8 @@ static uint64_t save_message_if_not_exist(mysql::MySQL *db,
 		return 0;
 	}
 
-	pk_message_id = get_message_pk(db, message, pk_chat_id, pk_sender_id);
+	pk_message_id = get_message_pk(kwrk, db, message, pk_chat_id,
+				       pk_sender_id);
 	if (unlikely(!pk_message_id))
 		goto rollback;
 
