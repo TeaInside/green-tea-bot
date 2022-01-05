@@ -1,3 +1,5 @@
+-- Adminer 4.8.1 MySQL 8.0.27-0ubuntu0.21.10.1 dump
+
 SET NAMES utf8;
 SET time_zone = '+00:00';
 SET foreign_key_checks = 0;
@@ -257,3 +259,24 @@ CREATE TABLE `gt_users_history` (
   FULLTEXT KEY `bio` (`bio`),
   CONSTRAINT `gt_users_history_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `gt_users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+
+DROP TABLE IF EXISTS `telegram_sso`;
+CREATE TABLE `telegram_sso` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL,
+  `username` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `email` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `created_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`),
+  KEY `user_id` (`user_id`),
+  KEY `email` (`email`),
+  KEY `password` (`password`),
+  KEY `created_at` (`created_at`),
+  CONSTRAINT `telegram_sso_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `gt_users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+
+-- 2022-01-05 12:45:42
