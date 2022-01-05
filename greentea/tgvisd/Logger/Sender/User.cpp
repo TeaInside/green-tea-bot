@@ -232,7 +232,7 @@ static uint64_t create_user(mysql::MySQL *db, struct user_data *ud)
 			   user.username_.size());
 
 	if (!user.first_name_.size())
-		stmt->bind(2, MYSQL_TYPE_STRING, (void *) "", 0);
+		stmt->bind(2, MYSQL_TYPE_NULL, NULL, 0);
 	else
 		stmt->bind(2, MYSQL_TYPE_STRING,
 			   (void *) user.first_name_.c_str(),
