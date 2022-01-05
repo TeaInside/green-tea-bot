@@ -30,6 +30,8 @@
 
 namespace tgvisd {
 
+using LogMessage = tgvisd::Logger::Message;
+
 __cold Scraper::Scraper(Main *main):
 	main_(main),
 	kworker_(main->getKWorker())
@@ -61,7 +63,7 @@ bool Scraper::runFastPhase(void)
 	bool stop = false;
 	uint32_t i;
 
-	for (i = 0; i < 50; i++) {
+	for (i = 0; i < 500; i++) {
 		if ((stop = shouldStop()))
 			break;
 		_run();
@@ -79,7 +81,7 @@ bool Scraper::runSlowPhase(void)
 	bool stop = false;
 	uint32_t i, j;
 
-	for (i = 0; i < 100; i++) {
+	for (i = 0; i < 10; i++) {
 		if ((stop = shouldStop()))
 			break;
 		_run();
@@ -97,34 +99,33 @@ out:
 
 __hot void Scraper::_run(void)
 {
-	int32_t i, j;
-	int64_t chat_id;
+	int32_t i, count;
 
 	pr_notice("Getting chat list...");
 	auto chats = kworker_->getChats(nullptr, 500);
 	if (unlikely(!chats))
 		return;
 
-	for (i = 0; i < chats->total_count_; i++) {
+	count = chats->total_count_;
+	for (i = 0; i < count; i++) {
+		int64_t chat_id;
+
 		if (shouldStop())
-			break;
+			return;
 
 		chat_id = chats->chat_ids_[i];
-		pr_notice("Scraping %ld...", chat_id);
-		for (j = 0; j < 5; j++) {
-			auto chat = kworker_->getChat(chat_id);
+		auto chat = kworker_->getChat(chat_id);
+		if (unlikely(!chat))
+			continue;
 
-			if (unlikely(!chat))
-				continue;
+		if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID)
+			continue;
 
-			if (chat->type_->get_id() != td_api::chatTypeSupergroup::ID)
-				continue;
+		if (shouldStop())
+			return;
 
-			if (shouldStop())
-				return;
-			visit_chat(chat);
-		}
-		sleep(1);
+		pr_notice("Visiting %lld...", (long long) chat_id);
+		visit_chat(chat);
 	}
 }
 
@@ -155,64 +156,103 @@ __hot void Scraper::visit_chat(td_api::object_ptr<td_api::chat> &chat)
 	tw.payload = (void *)payload;
 	tw.deleter = scraper_payload_deleter;
 
-	do {
+	while (1) {
 		if (shouldStop())
 			break;
 
 		ret = kworker_->submitTaskWork(&tw);
-		if (ret == -EAGAIN)
-			sleep(1);
+		if (ret != -EAGAIN)
+			break;
 
-	} while (ret == -EAGAIN);
+		sleep(1);
+	}
 }
 
 __hot void Scraper::_visit_chat(struct tw_data *data,
 				td_api::object_ptr<td_api::chat> &chat)
 {
 	int32_t count, i;
-	struct thpool *current = data->current;
 	std::mutex *chat_lock;
 	int64_t startMsgId = 0;
+	int64_t shiftedMsgId;
 	td_api::object_ptr<td_api::error> err;
-	static std::mutex startMsgIdMapLock;
-	static std::unordered_map<int64_t, int64_t> startMsgIdMap;
+	struct thpool *current = data->current;
+	static std::mutex minMaxMapLock;
+	static std::unordered_map<int64_t, uint8_t> minMaxMap;
 
-	pr_notice("Scraping messages from (%ld) [%s]...", chat->id_,
-		  chat->title_.c_str());
+	/* false = min; true = max;*/
+	bool minMax;
+
+	minMaxMapLock.lock();
+	if (unlikely(minMaxMap.find(chat->id_) == minMaxMap.end())) {
+		minMaxMap.emplace(chat->id_, 0);
+		minMax = true;
+	} else {
+		uint8_t nn = ++minMaxMap[chat->id_];
+
+		/* Dominate min. */
+		minMax = ((nn % 5) == 0);
+	}
+	minMaxMapLock.unlock();
+
+
+	pr_notice("Scraping messages from (%lld) [%s]...",
+		  (long long) chat->id_, chat->title_.c_str());
 
 	chat_lock = kworker_->getChatLock(chat->id_);
 	if (unlikely(!chat_lock)) {
-		pr_notice("Could not get chat lock (%ld) [%s]", chat->id_,
-			  chat->title_.c_str());
+		pr_notice("Could not get chat lock (%lld) [%s]",
+			  (long long) chat->id_, chat->title_.c_str());
 		return;
 	}
 
-	startMsgIdMapLock.lock();
-	const auto &it = startMsgIdMap.find(chat->id_);
-	if (it != startMsgIdMap.end()) {
-		startMsgId = startMsgIdMap[chat->id_];
-		startMsgIdMap[chat->id_] += 50;
-	} else {
-		startMsgIdMap[chat->id_] = 1;
+	/*
+	 * @startMsgId will be zero when we don't have any message from
+	 * the corresponding @chat->id_ in our database.
+	 */
+	chat_lock->lock();
+	startMsgId = LogMessage::getMinMaxMsgIdByTgGroupId(kworker_, chat->id_,
+							   minMax);
+	chat_lock->unlock();
+	if (unlikely(startMsgId == -1)) {
+		pr_err("Cannot check last message id from (%lld)",
+		       (long long) chat->id_);
+		return;
 	}
-	startMsgIdMapLock.unlock();
 
-	pr_notice("Scraping %ld with startMsgId = %ld", chat->id_, startMsgId);
+	if (startMsgId > 0) {
+		if (!minMax)
+			startMsgId += 1;
+		else if (startMsgId > 30)
+			startMsgId -= 30;
+	}
 
+	pr_notice("Scraping %lld with startMsgId = %lld; (%s)",
+		  (long long) chat->id_, (long long) startMsgId,
+		  (minMax ? "max" : "min"));
+
+	shiftedMsgId = startMsgId ? startMsgId << 20ull : startMsgId;
 	auto messages = kworker_->getChatHistory(chat->id_,
-						 startMsgId << 20u, -10, 100,
-						 false, &err);
+						 shiftedMsgId,
+						 -30,
+						 100,
+						 false,
+						 &err);
 	if (unlikely(!messages)) {
-		pr_notice("Could not get message history from (%ld) [%s]: %s",
-			  chat->id_, chat->title_.c_str(),
+out_get_msg_fail:
+		pr_notice("Could not get message history from (%lld) [%s]: %s",
+			  (long long) chat->id_, chat->title_.c_str(),
 			  err ? to_string(err).c_str() : "no err info");
 		return;
 	}
 
 	count = messages->total_count_;
+	if (unlikely(count == 0))
+		goto out_get_msg_fail;
+
 	current->setInterruptible();
 	for (i = 0; i < count; i++) {
-		tgvisd::Logger::Message *m_msg;
+		LogMessage *m_msg;
 
 		if (shouldStop())
 			break;
@@ -222,7 +262,7 @@ __hot void Scraper::_visit_chat(struct tw_data *data,
 			continue;
 
 		current->setUninterruptible();
-		m_msg = new tgvisd::Logger::Message(kworker_, *msg);
+		m_msg = new LogMessage(kworker_, *msg);
 		m_msg->set_chat(std::move(chat));
 		m_msg->set_chat_lock(chat_lock);
 		m_msg->save();
@@ -230,6 +270,10 @@ __hot void Scraper::_visit_chat(struct tw_data *data,
 		delete m_msg;
 		current->setInterruptible();
 	}
+
+	pr_notice("Scraped %lld messages from %lld with startMsgId = %lld; (%s)",
+		  (long long) count, (long long) chat->id_,
+		  (long long) startMsgId, (minMax ? "max" : "min"));
 }
 
 } /* namespace tgvisd */

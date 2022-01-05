@@ -476,7 +476,7 @@ static uint64_t save_message_if_not_exist(mysql::MySQL *db,
 	}
 
 	/* Success! */
-	pr_notice("pk_message_id = %" PRIu64, pk_message_id);
+	// pr_notice("pk_message_id = %" PRIu64, pk_message_id);
 	return pk_message_id;
 
 rollback:
@@ -484,6 +484,63 @@ rollback:
 	if (unlikely(tmp))
 		pr_err("rollback(): %s", db->getError());
 	return 0;
+}
+
+/* static */
+int64_t Message::getMinMaxMsgIdByTgGroupId(KWorker *kwrk, int64_t tg_group_id,
+					   bool minMax)
+{
+	static const char q[] =
+		"SELECT gt_messages.tg_msg_id FROM gt_messages "
+		"WHERE gt_messages.chat_id = ( "
+			"SELECT gt_chats.id FROM gt_chats "
+			"INNER JOIN gt_chat_group ON gt_chats.id = gt_chat_group.chat_id "
+			"INNER JOIN gt_groups ON gt_groups.id = gt_chat_group.group_id "
+			"WHERE gt_groups.tg_group_id = %" PRId64 " LIMIT 1"
+		") "
+		"ORDER BY gt_messages.tg_msg_id %s LIMIT 1;";
+
+	int64_t ret;
+	int qlen, tmp;
+	MYSQL_ROW row;
+	mysql::MySQL *db;
+	char qbuf[sizeof(q) + 128];
+	mysql::MySQLRes *res = nullptr;
+	const char *order_type = minMax ? "ASC" : "DESC";
+
+
+	db = kwrk->getDbPool();
+	if (unlikely(!db))
+		return -1;
+
+	ret  = -1;
+	qlen = snprintf(qbuf, sizeof(qbuf), q, tg_group_id, order_type);
+	tmp  = db->realQuery(qbuf, (size_t) qlen);
+	if (unlikely(tmp)) {
+		pr_err("query(): %s", db->getError());
+		goto out;
+	}
+
+	res = db->storeResult();
+	if (MYSQL_IS_ERR_OR_NULL(res)) {
+		pr_err("storeResult(): %s", db->getError());
+		goto out;
+	}
+
+	row = res->fetchRow();
+	if (!row)
+		/*
+		 * The query didn't fail, we just don't yet have any
+		 * record for this tg_group_id. Set the @ret to 0.
+		 */
+		ret = 0;
+	else
+		ret = strtoll(row[0], NULL, 10);
+
+	delete res;
+out:
+	kwrk->putDbPool(db);
+	return ret;
 }
 
 } /* namespace tgvisd::Logger */

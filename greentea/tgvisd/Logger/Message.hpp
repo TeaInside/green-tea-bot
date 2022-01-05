@@ -41,6 +41,10 @@ public:
 
 	void save(void);
 
+	static int64_t getMinMaxMsgIdByTgGroupId(KWorker *kwrk,
+						int64_t tg_group_id,
+						bool minMax = false);
+
 protected:
 	const td_api::message			&message_;
 	KWorker					*kworker_ = nullptr;
