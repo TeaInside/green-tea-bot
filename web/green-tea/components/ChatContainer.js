@@ -15,7 +15,8 @@ class ChatContainer extends React.Component {
             chatBoxData: [],
             chatBoxDataCache: {},
             lastMessageLoaded: false,
-            fetchPtr: 0
+            fetchPtr: 0,
+            activeChatId: 0
         };
     }
 
@@ -56,6 +57,7 @@ class ChatContainer extends React.Component {
             this.setState({
                 loadingChatBox: false,
                 groupName: group_name,
+                activeChatId: chat_id,
                 chatBoxData: this.state.chatBoxDataCache[chat_id],
             });
             return;
@@ -66,6 +68,7 @@ class ChatContainer extends React.Component {
         this.setState({
             loadingChatBox: false,
             groupName: group_name,
+            activeChatId: chat_id,
             chatBoxData: this.state.chatBoxDataCache[chat_id],
         });
     }
