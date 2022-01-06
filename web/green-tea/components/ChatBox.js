@@ -3,7 +3,7 @@ import classNames from "classnames";
 import { useState } from "react";
 import Message from "./Message";
 
-function ChatBox({ data }) {
+function ChatBox({ data, groupName }) {
     const [offcanvas, setOffcanvas] = useState(false);
     return (
         <div className="flex-grow flex h-screen bg-cream">
@@ -11,7 +11,7 @@ function ChatBox({ data }) {
                 <div className="flex items-center bg-white w-full pl-5 h-[80px] shadow-md sticky top-0">
                     <img className="w-12 h-12 rounded-full" src="profile.jpeg" alt="" />
                     <div className="ml-4">
-                        <h2 className="text-[20px] font-bold">Group 1</h2>
+                        <h2 className="text-[20px] font-bold">{groupName}</h2>
                         <p className="text-gray-400">Online</p>
                     </div>
                     <SearchIcon className="w-8 h-8 ml-auto mr-4 text-gray-400 cursor-pointer" onClick={() => setOffcanvas(true)} />
