@@ -60,15 +60,17 @@ class Login extends APIFoundation
 		if (isset($r["password"]) && password_verify($pass, $r["password"])) {
 			$isOk  = true;
 			$token = $this->createSession($pdo, (int) $r["id"]);
-			$msg   = ["token" => $token];
+			$msg   = "Login success!";
 		} else {
+			$token = NULL;
 			$isOk  = false;
-			$msg   = ["msg" => "Login failed!"];
+			$msg   = "Login failed!";
 		}
 
 		return [
 			"is_ok" => $isOk,
 			"msg"   => $msg,
+			"token" => $token,
 			"data"  => $data,
 		];
 	}
