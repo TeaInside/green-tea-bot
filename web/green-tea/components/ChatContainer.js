@@ -115,7 +115,12 @@ class ChatContainer extends React.Component {
                     </div>
                 );
             } else {
-                chatBoxElement = <ChatBox data={this.state.chatBoxData} groupName={this.state.groupName} />;
+                chatBoxElement = (
+                    <ChatBox
+                        container={this}
+                        data={this.state.chatBoxData}
+                        groupName={this.state.groupName} />
+                );
             }
         }
 
