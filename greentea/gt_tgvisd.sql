@@ -260,6 +260,22 @@ CREATE TABLE `gt_users_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
+DROP TABLE IF EXISTS `login_sessions`;
+CREATE TABLE `login_sessions` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint NOT NULL,
+  `token` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `created_at` datetime NOT NULL,
+  `expired_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  KEY `code` (`token`),
+  KEY `created_at` (`created_at`),
+  KEY `expired_at` (`expired_at`),
+  CONSTRAINT `login_sessions_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `telegram_sso` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+
 DROP TABLE IF EXISTS `telegram_sso`;
 CREATE TABLE `telegram_sso` (
   `id` bigint NOT NULL AUTO_INCREMENT,
@@ -278,4 +294,4 @@ CREATE TABLE `telegram_sso` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 
--- 2022-01-05 15:48:42
+-- 2022-01-06 16:30:52
