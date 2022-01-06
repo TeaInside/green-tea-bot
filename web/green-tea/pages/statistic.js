@@ -4,7 +4,7 @@ import StatisticContent from "../components/StatisticContent";
 
 
 export default function Statistic(){
-    return(
+    let page = (
         <div className="flex">
             <Head>
                 <title>GreenTea Dashboard</title>
@@ -12,7 +12,8 @@ export default function Statistic(){
             </Head>
             <Sidebar/>
             <StatisticContent />
-
         </div>
-    )
+    );
+
+    return (<Session page={page}/>);
 }

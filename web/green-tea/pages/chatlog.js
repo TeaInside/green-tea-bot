@@ -3,7 +3,7 @@ import Sidebar from "../components/Sidebar";
 import ChatContainer from "../components/ChatContainer";
 
 function chatlog() {
-    return (
+    let page = (
         <div className="flex">
             <Head>
                 <title>GreenTea Dashboard</title>
@@ -13,6 +13,8 @@ function chatlog() {
             <ChatContainer/>
         </div>
     );
+
+    return (<Session page={page}/>);
 }
 
 export default chatlog;
