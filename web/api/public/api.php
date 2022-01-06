@@ -6,6 +6,7 @@
  * Green Tea Bot API endpoint.
  */
 
+use GreenTea\API\Login;
 use GreenTea\API\GetGroupList;
 use GreenTea\API\GetChatMessages;
 use GreenTea\API\RegisterAccount;
@@ -80,6 +81,24 @@ try {
 	case "register":
 		$api = new RegisterAccount();
 		$msg = $api->register();
+		if ($api->isError())
+			$code = $api->getErrorCode();
+		break;
+	case "login":
+		if (!isset($_POST["email"]) || !is_string($_POST["email"])) {
+			$msg  = "Missing \"email\" string data";
+			$code = 400;
+			goto out;
+		}
+
+		if (!isset($_POST["pass"]) || !is_string($_POST["pass"])) {
+			$msg  = "Missing \"pass\" string data";
+			$code = 400;
+			goto out;
+		}
+
+		$api = new Login();
+		$msg = $api->doLogin($_POST["email"], $_POST["pass"]);
 		if ($api->isError())
 			$code = $api->getErrorCode();
 		break;
