@@ -2,23 +2,28 @@ import React from "react";
 import Login from "../components/Login";
 
 class Session extends React.Component {
-	constructor(props) {
-		super(props);
-		this.state = {
-			sessToken: null
-		};
-	}
+    constructor(props) {
+        super(props);
+        this.state = {
+            sessToken: null,
+        };
+    }
 
-	componentDidMount() {
-		this.setState({sessToken: localStorage.getItem("token")});
-	}
-	
-	render() {
-		if (!this.state.sessToken)
-			return (<Login/>);
+    componentDidMount() {
+        let token = localStorage.getItem("token");
+        this.setState({ sessToken: token });
+        if (!token && window.location.pathname != "/") {
+            window.location = "/";
+        }
+    }
 
-		return (this.props.page);
-	}
-};
+    render() {
+        if (!this.state.sessToken) {
+            return <Login />;
+        }
+
+        return this.props.page;
+    }
+}
 
 export default Session;

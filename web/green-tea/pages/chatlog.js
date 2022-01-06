@@ -1,6 +1,7 @@
 import Head from "next/head";
-import Sidebar from "../components/Sidebar";
 import ChatContainer from "../components/ChatContainer";
+import Sidebar from "../components/Sidebar";
+import Session from "./session";
 
 function chatlog() {
     let page = (
@@ -10,11 +11,11 @@ function chatlog() {
                 <link rel="icon" href="/greentea.ico" />
             </Head>
             <Sidebar />
-            <ChatContainer/>
+            <ChatContainer />
         </div>
     );
 
-    return (<Session page={page}/>);
+    return <Session page={page} />;
 }
 
 export default chatlog;
