@@ -1,5 +1,6 @@
 import React from "react";
 import Head from "next/head";
+import CONFIG from "../config.json";
 
 class register extends React.Component {
     constructor(props) {
@@ -32,7 +33,7 @@ class register extends React.Component {
                 alert(json.msg.msg);
             }
         };
-        ch.open("POST", "http://127.0.0.1:8888/api.php?action=register");
+        ch.open("POST", CONFIG.BASE_API_URL + "/api.php?action=register");
         ch.send(data);
     }
 
