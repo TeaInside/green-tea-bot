@@ -5,14 +5,18 @@ class Session extends React.Component {
 	constructor(props) {
 		super(props);
 		this.state = {
-			sess_token: null
+			sessToken: null
 		};
+	}
+
+	componentDidMount() {
+		this.setState({sessToken: localStorage.getItem("token")});
 	}
 	
 	render() {
-
-		if (this.state.sess_token == null)
+		if (!this.state.sessToken)
 			return (<Login/>);
+
 		return (this.props.page);
 	}
 };

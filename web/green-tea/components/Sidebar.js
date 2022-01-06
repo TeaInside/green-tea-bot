@@ -9,6 +9,11 @@ import classNames from "classnames";
 import Link from "next/link";
 import { useState } from "react";
 
+function handleLogout() {
+    localStorage.setItem("token", "");
+    window.location = "/";
+}
+
 function Sidebar() {
     const [click, setClick] = useState(false);
 
@@ -102,7 +107,7 @@ function Sidebar() {
                     Admin
                 </p>
                 <div className="hover:bg-opacity-20 hover:bg-white hover:rounded-full p-2 ml-auto">
-                    <LogoutIcon className="w-[30px] h-[30px] text-white cursor-pointer" />
+                    <LogoutIcon onClick={handleLogout} className="w-[30px] h-[30px] text-white cursor-pointer" />
                 </div>
             </div>
         </div>
