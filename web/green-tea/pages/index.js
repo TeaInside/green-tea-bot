@@ -1,9 +1,10 @@
 import Head from "next/head";
+import Session from "./session";
 import Dashboard from "../components/Dashboard";
 import Sidebar from "../components/Sidebar";
 
 export default function Home() {
-    return (
+    let page = (
         <div className="flex">
             <Head>
                 <title>GreenTea Dashboard</title>
@@ -13,4 +14,6 @@ export default function Home() {
             <Dashboard />
         </div>
     );
+
+    return (<Session page={page}/>);
 }

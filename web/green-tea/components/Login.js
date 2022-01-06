@@ -1,6 +1,6 @@
 import Head from "next/head";
 
-function login() {
+export default function Login() {
     return (
         <div className="w-screen bg-cream h-screen pt-8">
             <Head>
@@ -54,10 +54,9 @@ function login() {
                     >
                         Login
                     </a>
+                    <a href="/register">Register</a>
                 </form>
             </main>
         </div>
     );
 }
-
-export default login;
