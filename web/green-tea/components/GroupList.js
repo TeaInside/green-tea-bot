@@ -18,15 +18,15 @@ export default function GroupList({ container, list }) {
             </div>
 
             <div className="flex flex-col overflow-y-scroll h-[85%] whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-200">
-                {list.map(({ id, tg_group_id, name }) => (
-                    <Group
-                        key={tg_group_id}
+                {list.map(function({ id, tg_group_id, name }) {
+                    return (<Group
+                        key={id}
                         groupName={name}
                         groupId={tg_group_id}
                         lastMessage="Dwi: hahaha"
                         container={container}
-                    />
-                ))}
+                    />);
+                })}
             </div>
         </div>
     );
