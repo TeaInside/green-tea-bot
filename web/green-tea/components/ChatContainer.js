@@ -1,6 +1,7 @@
 import React from "react";
 import ChatBox from "./ChatBox";
 import GroupList from "./GroupList";
+import CONFIG from "../config.json";
 
 class ChatContainer extends React.Component {
     constructor(props) {
@@ -17,12 +18,18 @@ class ChatContainer extends React.Component {
     }
 
     async fetchChatListdata() {
-        let url = "https://greentea-api.teainside.org/api.php?action=get_group_list";
+        let url = CONFIG.BASE_API_URL + "/api.php?action=get_group_list";
         let data = await fetch(url).then((res) => res.json());
         this.setState({
             loading: false,
             chatListdata: data.msg.data,
         });
+    }
+
+    async fetchChatData(chat_id, limit = 10) {
+        let url = CONFIG.BASE_API_URL + "/api.php?action=get_chat_messages&group_id=" + chat_id + "&limit=" + limit;
+        let data = await fetch(url).then((res) => res.json());
+        this.state.chatBoxDataCache[chat_id] = data.msg.data;
     }
 
     async fetchChatBoxData(chat_id, group_name, limit = 10) {

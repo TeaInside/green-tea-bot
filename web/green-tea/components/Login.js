@@ -1,6 +1,6 @@
 import React from "react";
 import Head from "next/head";
-import { LoginIcon } from "@heroicons/react/outline";
+import CONFIG from "../config.json";
 
 class Login extends React.Component {
     constructor(props) {
@@ -34,7 +34,7 @@ class Login extends React.Component {
                 alert(json.msg.msg);
             }
         };
-        ch.open("POST", "http://127.0.0.1:8888/api.php?action=login");
+        ch.open("POST", CONFIG.BASE_API_URL + "/api.php?action=login");
         ch.send(data);
     }
 
