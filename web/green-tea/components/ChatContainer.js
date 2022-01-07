@@ -92,7 +92,7 @@ class ChatContainer extends React.Component {
 
         if (this.state.loading)
             return (
-                <div>
+                <div className="w-full">
                     <h1>Loading Data...</h1>
                 </div>
             );
@@ -100,7 +100,7 @@ class ChatContainer extends React.Component {
         let chatBoxElement;
         if (this.state.loadingChatBox) {
             chatBoxElement = (
-                <div>
+                <div className="w-full">
                     <h1>Loading Data...</h1>
                 </div>
             );
@@ -118,7 +118,7 @@ class ChatContainer extends React.Component {
         }
 
         return (
-            <div className="flex-grow flex h-screen bg-cream">
+            <div className="flex-grow flex w-full h-screen bg-cream">
                 <GroupList container={this} list={this.state.chatListdata} />
                 {chatBoxElement}
             </div>
