@@ -1,5 +1,5 @@
-import React from "react";
 import Head from "next/head";
+import React from "react";
 import CONFIG from "../config.json";
 
 class Login extends React.Component {
@@ -13,19 +13,19 @@ class Login extends React.Component {
 
     handleInputChange(e) {
         const target = e.target;
-        const value = target.type === 'checkbox' ? target.checked : target.value;
+        const value = target.type === "checkbox" ? target.checked : target.value;
         const name = target.name;
         this.setState({
-            [name]: value
+            [name]: value,
         });
     }
 
     async doLogin(e) {
         e.preventDefault();
-        let ch = new XMLHttpRequest;
+        let ch = new XMLHttpRequest();
         let data = new FormData(e.target);
         ch.onload = function () {
-            let json = JSON.parse(this.responseText);
+            let json = JSON.parse(ch.responseText);
             if (json.msg.is_ok) {
                 alert(json.msg.msg);
                 localStorage.setItem("token", json.msg.token);
@@ -47,20 +47,11 @@ class Login extends React.Component {
                 </Head>
 
                 <main className="flex flex-col w-10/12 md:w-7/12 lg:w-6/12 xl:w-5/12 2xl:w-4/12 bg-white mx-auto px-12 py-12  space-y-5">
-                    <img
-                        className="w-[300px] mx-auto"
-                        src="greentea.svg"
-                        alt="logo"
-                    />
-                    <h1 className="text-gray-600 font-sans font-semibold text-[30px] text-center">
-                        Login to your account
-                    </h1>
+                    <img className="w-[300px] mx-auto" src="greentea.svg" alt="logo" />
+                    <h1 className="text-gray-600 font-sans font-semibold text-[30px] text-center">Login to your account</h1>
                     <form onSubmit={(e) => this.doLogin(e)} className="flex flex-col space-y-5" action="" method="">
                         <div className="flex flex-col">
-                            <label
-                                className="text-gray-500 text-[20px] font-sans"
-                                htmlFor="email"
-                            >
+                            <label className="text-gray-500 text-[20px] font-sans" htmlFor="email">
                                 Email
                             </label>
                             <input
@@ -74,10 +65,7 @@ class Login extends React.Component {
                             />
                         </div>
                         <div className="flex flex-col">
-                            <label
-                                className="text-gray-500 text-[20px] font-sans"
-                                htmlFor="password"
-                            >
+                            <label className="text-gray-500 text-[20px] font-sans" htmlFor="password">
                                 Password
                             </label>
                             <input
@@ -90,10 +78,7 @@ class Login extends React.Component {
                                 required
                             />
                         </div>
-                        <button type="submit"
-                            className="bg-dark-green text-white text-[20px] px-3 py-4 rounded-lg text-center cursor-pointer hover:bg-dark-green-1"
-                            href="/"
-                        >
+                        <button type="submit" className="bg-dark-green text-white text-[20px] px-3 py-4 rounded-lg text-center cursor-pointer hover:bg-dark-green-1" href="/">
                             Login
                         </button>
                         <a href="/register">Register</a>
