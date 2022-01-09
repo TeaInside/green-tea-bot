@@ -10,6 +10,7 @@ use GreenTea\API\Login;
 use GreenTea\API\GetGroupList;
 use GreenTea\API\GetChatMessages;
 use GreenTea\API\RegisterAccount;
+use GreenTea\API\GetMessageCountGroup;
 
 if (isset($_SERVER["HTTP_ORIGIN"]) && is_string($_SERVER["HTTP_ORIGIN"])) {
 	header("Access-Control-Allow-Origin: {$_SERVER["HTTP_ORIGIN"]}");
@@ -99,6 +100,12 @@ try {
 
 		$api = new Login();
 		$msg = $api->doLogin($_POST["email"], $_POST["pass"]);
+		if ($api->isError())
+			$code = $api->getErrorCode();
+		break;
+	case "get_msg_count_group":
+		$api = new GetMessageCountGroup();
+		$msg = $api->getCount();
 		if ($api->isError())
 			$code = $api->getErrorCode();
 		break;
