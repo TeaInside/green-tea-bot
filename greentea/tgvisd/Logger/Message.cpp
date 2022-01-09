@@ -173,10 +173,31 @@ bool Message::resolve_pk(void)
 	return true;
 }
 
-static uint64_t save_message_if_not_exist(KWorker *kwrk, mysql::MySQL *db,
-					  const td_api::message &message,
-					  uint64_t pk_chat_id,
-					  uint64_t pk_sender_id);
+struct save_msg_ctx {
+	KWorker			*kwrk;
+	mysql::MySQL		*db;
+	const td_api::message	&message;
+	uint64_t		pk_chat_id;
+	uint64_t		pk_sender_id;
+	std::mutex		*chat_lock;
+
+	inline save_msg_ctx(KWorker *kwrk_, mysql::MySQL *db_,
+			    const td_api::message &message_,
+			    uint64_t pk_chat_id_, uint64_t pk_sender_id_,
+			    std::mutex *chat_lock_):
+		kwrk(kwrk_),
+		db(db_),
+		message(message_),
+		pk_chat_id(pk_chat_id_),
+		pk_sender_id(pk_sender_id_),
+		chat_lock(chat_lock_)
+	{
+	}
+
+	inline ~save_msg_ctx(void) = default;
+};
+
+static uint64_t save_message_if_not_exist(struct save_msg_ctx *ctx);
 
 void Message::save(void)
 {
@@ -202,10 +223,14 @@ void Message::save(void)
 	if (!resolve_pk())
 		return;
 
-	chat_lock_->lock();
-	save_message_if_not_exist(kworker_, db_, message_, pk_chat_id_,
-				  pk_sender_id_);
-	chat_lock_->unlock();
+	{
+		struct save_msg_ctx ctx(kworker_, db_, message_, pk_chat_id_,
+					pk_sender_id_, chat_lock_);
+
+		chat_lock_->lock();
+		save_message_if_not_exist(&ctx);
+		chat_lock_->unlock();
+	}
 }
 
 static size_t convert_epoch_to_db_format(char *buf, size_t buf_size,
@@ -508,15 +533,15 @@ out:
 	return pk_msg_fwd_info_id;
 }
 
-static uint64_t create_message(KWorker *kwrk, mysql::MySQL *db,
-			       const td_api::message &message,
-			       uint64_t pk_chat_id, uint64_t pk_sender_id)
+static uint64_t create_message(struct save_msg_ctx *ctx)
+	__must_hold(ctx->chat_lock)
 {
 	uint64_t tg_msg_id;
 	uint64_t pk_message_id;
 	uint64_t reply_to_tg_msg_id;
 	mysql::MySQLStmt *stmt = nullptr;
 	const char *stmtErrFunc = nullptr;
+	mysql::MySQL *db = ctx->db;
 
 	stmt = db->prepare(8,
 		"INSERT INTO `gt_messages` "
@@ -557,13 +582,13 @@ static uint64_t create_message(KWorker *kwrk, mysql::MySQL *db,
 		goto stmt_err;
 	}
 
-	tg_msg_id = message.id_ >> 20u;
-	reply_to_tg_msg_id = message.reply_to_message_id_ >> 20u;
+	tg_msg_id = ctx->message.id_ >> 20u;
+	reply_to_tg_msg_id = ctx->message.reply_to_message_id_ >> 20u;
 
-	stmt->bind(0, MYSQL_TYPE_LONGLONG, (void *) &pk_chat_id,
-		   sizeof(pk_chat_id));
-	stmt->bind(1, MYSQL_TYPE_LONGLONG, (void *) &pk_sender_id,
-		   sizeof(pk_sender_id));
+	stmt->bind(0, MYSQL_TYPE_LONGLONG, (void *) &ctx->pk_chat_id,
+		   sizeof(ctx->pk_chat_id));
+	stmt->bind(1, MYSQL_TYPE_LONGLONG, (void *) &ctx->pk_sender_id,
+		   sizeof(ctx->pk_sender_id));
 	stmt->bind(2, MYSQL_TYPE_LONGLONG, (void *) &tg_msg_id,
 		   sizeof(tg_msg_id));
 
@@ -575,9 +600,9 @@ static uint64_t create_message(KWorker *kwrk, mysql::MySQL *db,
 
 	stmt->bind(4, MYSQL_TYPE_STRING, (void *) "text", 4);
 	stmt->bind(5, MYSQL_TYPE_STRING,
-		   (void *) (message.edit_date_ ? "1" : "0"), 1);
+		   (void *) (ctx->message.edit_date_ ? "1" : "0"), 1);
 	stmt->bind(6, MYSQL_TYPE_STRING,
-		   (void *) (message.forward_info_ ? "1" : "0"), 1);
+		   (void *) (ctx->message.forward_info_ ? "1" : "0"), 1);
 	stmt->bind(7, MYSQL_TYPE_STRING, (void *) "0" , 1);
 
 	if (unlikely(stmt->bindStmt())) {
@@ -592,16 +617,16 @@ static uint64_t create_message(KWorker *kwrk, mysql::MySQL *db,
 
 	pk_message_id = stmt->getInsertId();
 
-	if (message.forward_info_) {
-		if (unlikely(!save_msg_fwd_info(kwrk, db,
-						*message.forward_info_,
+	if (ctx->message.forward_info_) {
+		if (unlikely(!save_msg_fwd_info(ctx->kwrk, ctx->db,
+						*ctx->message.forward_info_,
 						pk_message_id))) {
 			pk_message_id = 0;
 			goto out;
 		}
 	}
 
-	if (unlikely(!create_message_content(db, message, pk_message_id)))
+	if (unlikely(!create_message_content(ctx->db, ctx->message, pk_message_id)))
 		pk_message_id = 0;
 
 	goto out;
@@ -614,9 +639,8 @@ out:
 	return pk_message_id;
 }
 
-static uint64_t get_message_pk(KWorker *kwrk, mysql::MySQL *db,
-			       const td_api::message &message,
-			       uint64_t pk_chat_id, uint64_t pk_sender_id)
+static uint64_t get_message_pk(struct save_msg_ctx *ctx)
+	__must_hold(ctx->chat_lock)
 {
 	static const char q[] =
 		"SELECT id FROM gt_messages WHERE "
@@ -628,9 +652,10 @@ static uint64_t get_message_pk(KWorker *kwrk, mysql::MySQL *db,
 	uint64_t tg_msg_id;
 	uint64_t pk_message_id;
 	char qbuf[sizeof(q) + 128];
+	mysql::MySQL *db = ctx->db;
 
-	tg_msg_id = message.id_ >> 20u;
-	qlen = snprintf(qbuf, sizeof(qbuf), q, pk_chat_id, tg_msg_id);
+	tg_msg_id = ctx->message.id_ >> 20u;
+	qlen = snprintf(qbuf, sizeof(qbuf), q, ctx->pk_chat_id, tg_msg_id);
 
 	tmp = db->realQuery(qbuf, (size_t) qlen);
 	if (unlikely(tmp)) {
@@ -646,8 +671,7 @@ static uint64_t get_message_pk(KWorker *kwrk, mysql::MySQL *db,
 
 	row = res->fetchRow();
 	if (!row) {
-		pk_message_id = create_message(kwrk, db, message, pk_chat_id,
-					       pk_sender_id);
+		pk_message_id = create_message(ctx);
 		goto out;
 	}
 
@@ -657,13 +681,12 @@ out:
 	return pk_message_id;
 }
 
-static uint64_t save_message_if_not_exist(KWorker *kwrk, mysql::MySQL *db,
-					  const td_api::message &message,
-					  uint64_t pk_chat_id,
-					  uint64_t pk_sender_id)
+static uint64_t save_message_if_not_exist(struct save_msg_ctx *ctx)
+	__must_hold(ctx->chat_lock)
 {
 	int tmp;
 	uint64_t pk_message_id;
+	mysql::MySQL *db = ctx->db;
 
 	tmp = db->beginTransaction();
 	if (unlikely(tmp)) {
@@ -671,8 +694,7 @@ static uint64_t save_message_if_not_exist(KWorker *kwrk, mysql::MySQL *db,
 		return 0;
 	}
 
-	pk_message_id = get_message_pk(kwrk, db, message, pk_chat_id,
-				       pk_sender_id);
+	pk_message_id = get_message_pk(ctx);
 	if (unlikely(!pk_message_id))
 		goto rollback;
 
