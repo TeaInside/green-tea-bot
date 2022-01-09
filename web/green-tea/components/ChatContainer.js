@@ -1,7 +1,7 @@
 import React from "react";
+import CONFIG from "../config.json";
 import ChatBox from "./ChatBox";
 import GroupList from "./GroupList";
-import CONFIG from "../config.json";
 
 class ChatContainer extends React.Component {
     constructor(props) {
@@ -16,7 +16,7 @@ class ChatContainer extends React.Component {
             chatBoxDataCache: {},
             lastMessageLoaded: false,
             fetchPtr: 0,
-            activeChatId: 0
+            activeChatId: 0,
         };
     }
 
@@ -35,21 +35,20 @@ class ChatContainer extends React.Component {
         await fetch(url).then(async function (res) {
             let data = await res.json();
             reactThis.state.chatBoxDataCache[chat_id] = data.msg.data;
-            if (callback)
-                callback();
+            if (callback) callback();
         });
         this.setState({ lastMessageLoaded: true });
     }
 
     getLastMessage(chat_id) {
-        if (!(chat_id in this.state.chatBoxDataCache))
-            return "";
+        if (!(chat_id in this.state.chatBoxDataCache)) return "";
 
         let msgList = this.state.chatBoxDataCache[chat_id];
-        if (msgList.length == 0)
-            return "";
+        if (msgList.length == 0) return "";
 
-        return msgList[msgList.length - 1].text;
+        let msg = msgList[msgList.length - 1];
+
+        return msg.first_name + ": " + msg.text;
     }
 
     async fetchChatBoxData(chat_id, group_name, limit = 10) {
@@ -78,8 +77,7 @@ class ChatContainer extends React.Component {
         let chatListData = this.state.chatListdata;
         let reactThis = this;
         let callback = function () {
-            if (reactThis.state.fetchPtr < chatListData.length)
-                reactThis.fetchChatData(chatListData[reactThis.state.fetchPtr++].tg_group_id, 10, callback);
+            if (reactThis.state.fetchPtr < chatListData.length) reactThis.fetchChatData(chatListData[reactThis.state.fetchPtr++].tg_group_id, 10, callback);
         };
         callback();
     }
@@ -94,7 +92,7 @@ class ChatContainer extends React.Component {
 
         if (this.state.loading)
             return (
-                <div>
+                <div className="w-full">
                     <h1>Loading Data...</h1>
                 </div>
             );
@@ -102,7 +100,7 @@ class ChatContainer extends React.Component {
         let chatBoxElement;
         if (this.state.loadingChatBox) {
             chatBoxElement = (
-                <div>
+                <div className="w-full">
                     <h1>Loading Data...</h1>
                 </div>
             );
@@ -115,17 +113,12 @@ class ChatContainer extends React.Component {
                     </div>
                 );
             } else {
-                chatBoxElement = (
-                    <ChatBox
-                        container={this}
-                        data={this.state.chatBoxData}
-                        groupName={this.state.groupName} />
-                );
+                chatBoxElement = <ChatBox container={this} data={this.state.chatBoxData} groupName={this.state.groupName} />;
             }
         }
 
         return (
-            <div className="flex-grow flex h-screen bg-cream">
+            <div className="flex-grow flex w-full h-screen bg-cream">
                 <GroupList container={this} list={this.state.chatListdata} />
                 {chatBoxElement}
             </div>

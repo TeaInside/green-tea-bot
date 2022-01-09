@@ -5,5 +5,5 @@ export default function WordStatisticRow() {
             <td className="border-solid border-2">Https</td>
             <td className="border-solid border-2">34</td>
         </tr>
-    )
+    );
 }
