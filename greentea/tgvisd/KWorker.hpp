@@ -133,7 +133,7 @@ public:
 
 
 	KWorker(Main *main, uint32_t maxThPool = 16, uint32_t maxDbPool = 256,
-		uint32_t maxNRTasks = 32);
+		uint32_t maxNRTasks = 512);
 	int submitTaskWork(struct task_work *tw);
 	mysql::MySQL *getDbPool(void);
 	void putDbPool(mysql::MySQL *db);
