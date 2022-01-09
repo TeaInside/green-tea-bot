@@ -29,7 +29,7 @@ class ChatContainer extends React.Component {
         });
     }
 
-    async fetchChatData(chat_id, limit = 10, callback = null) {
+    async fetchChatData(chat_id, limit = 300, callback = null) {
         let reactThis = this;
         let url = CONFIG.BASE_API_URL + "/api.php?action=get_chat_messages&group_id=" + chat_id + "&limit=" + limit;
         await fetch(url).then(async function (res) {
@@ -51,7 +51,7 @@ class ChatContainer extends React.Component {
         return msg.first_name + ": " + msg.text;
     }
 
-    async fetchChatBoxData(chat_id, group_name, limit = 10) {
+    async fetchChatBoxData(chat_id, group_name, limit = 300) {
         if (chat_id in this.state.chatBoxDataCache) {
             this.setState({
                 loadingChatBox: false,
