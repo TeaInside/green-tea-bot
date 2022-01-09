@@ -13,8 +13,18 @@ class Group extends React.Component {
         } else {
             rclass += "hover:bg-gray-200";
         }
+        let thisGroup = this;
         return (
-            <div onClick={(e) => this.props.container.fetchChatBoxData(this.props.groupId, this.props.groupName)} className={rclass}>
+            <div
+                onClick={async function(e) {
+                    await thisGroup.props.container.fetchChatBoxData(
+                        thisGroup.props.groupId,
+                        thisGroup.props.groupName);
+
+                    let x = document.getElementById("chatBoxCt");
+                    x.scrollTo(0, x.scrollHeight);
+                }}
+                className={rclass}>
                 <img className="w-12 h-12 rounded-full" src="profile.jpeg" alt="" />
                 <div className="ml-4 w-9/12 overflow-hidden whitespace-nowrap">
                     <h2>{"(" + this.props.groupId + ") " + "" + this.props.groupName}</h2>

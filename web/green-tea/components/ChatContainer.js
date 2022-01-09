@@ -77,7 +77,8 @@ class ChatContainer extends React.Component {
         let chatListData = this.state.chatListdata;
         let reactThis = this;
         let callback = function () {
-            if (reactThis.state.fetchPtr < chatListData.length) reactThis.fetchChatData(chatListData[reactThis.state.fetchPtr++].tg_group_id, 10, callback);
+            if (reactThis.state.fetchPtr < chatListData.length)
+                reactThis.fetchChatData(chatListData[reactThis.state.fetchPtr++].tg_group_id, 300, callback);
         };
         callback();
     }
