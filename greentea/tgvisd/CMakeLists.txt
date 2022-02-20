@@ -5,7 +5,7 @@ project(tgvisd VERSION 1.0 LANGUAGES C CXX)
 
 list(APPEND CMAKE_PREFIX_PATH "tdlib/lib/cmake/Td")
 
-find_package(Td 1.8.0 REQUIRED)
+find_package(Td 1.8.1 REQUIRED)
 
 
 include_directories(..)
